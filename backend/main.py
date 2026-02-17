@@ -120,23 +120,32 @@ from routes import (
 
 API_PREFIX = "/api/v1"
 
-# Telegram bot routes FIRST (more specific paths take priority)
-app.include_router(telegram_bot_router, prefix=API_PREFIX)
+all_routers = [
+    telegram_bot_router,
+    agents_router,
+    adms_router,
+    interactions_router,
+    feedback_router,
+    diary_router,
+    briefings_router,
+    analytics_router,
+    training_router,
+    assignment_router,
+    auth_router,
+    products_router,
+    onboarding_router,
+    playbooks_router,
+    communication_router,
+]
 
-app.include_router(agents_router, prefix=API_PREFIX)
-app.include_router(adms_router, prefix=API_PREFIX)
-app.include_router(interactions_router, prefix=API_PREFIX)
-app.include_router(feedback_router, prefix=API_PREFIX)
-app.include_router(diary_router, prefix=API_PREFIX)
-app.include_router(briefings_router, prefix=API_PREFIX)
-app.include_router(analytics_router, prefix=API_PREFIX)
-app.include_router(training_router, prefix=API_PREFIX)
-app.include_router(assignment_router, prefix=API_PREFIX)
-app.include_router(auth_router, prefix=API_PREFIX)
-app.include_router(products_router, prefix=API_PREFIX)
-app.include_router(onboarding_router, prefix=API_PREFIX)
-app.include_router(playbooks_router, prefix=API_PREFIX)
-app.include_router(communication_router, prefix=API_PREFIX)
+# Mount all routers under /api/v1 (primary)
+for r in all_routers:
+    app.include_router(r, prefix=API_PREFIX)
+
+# Also mount all routers at root (no prefix) so the API works
+# regardless of whether NEXT_PUBLIC_API_URL includes /api/v1 or not
+for r in all_routers:
+    app.include_router(r)
 
 
 # ---------------------------------------------------------------------------

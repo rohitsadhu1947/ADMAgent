@@ -17,7 +17,8 @@ RUN pip install --no-cache-dir --upgrade pip && \
 # Copy project files
 COPY backend/ ./backend/
 COPY bot/ ./bot/
+COPY railway_start.sh .
+RUN chmod +x railway_start.sh
 
-# Start backend directly with uvicorn
-WORKDIR /app/backend
-CMD uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}
+# Start backend + telegram bot
+CMD ["./railway_start.sh"]

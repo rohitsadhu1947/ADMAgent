@@ -7,7 +7,7 @@ echo "Starting ADM Platform on Railway (port: $PORT)..."
 # Start Backend API
 echo "Starting Backend API..."
 cd /app/backend
-PORT=$PORT python main.py &
+uvicorn main:app --host 0.0.0.0 --port "$PORT" --log-level info &
 BACKEND_PID=$!
 echo "Backend started (PID: $BACKEND_PID)"
 
