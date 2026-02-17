@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     WHATSAPP_PHONE_NUMBER_ID: str = ""
 
     # CORS
-    CORS_ORIGINS: str = "http://localhost:3000,http://localhost:5173,http://localhost:8080"
+    CORS_ORIGINS: str = "http://localhost:3000,http://localhost:5173,http://localhost:8080,https://adm-agent.vercel.app"
 
     # Security
     SECRET_KEY: str = "adm-platform-secret-key-change-in-production"

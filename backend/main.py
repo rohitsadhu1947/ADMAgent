@@ -183,11 +183,15 @@ def health_check():
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
     import uvicorn
+    import os
+
+    port = int(os.environ.get("PORT", 8000))
+    is_dev = os.environ.get("RAILWAY_ENVIRONMENT") is None
 
     uvicorn.run(
         "main:app",
         host="0.0.0.0",
-        port=8000,
-        reload=True,
+        port=port,
+        reload=is_dev,
         log_level="info",
     )
