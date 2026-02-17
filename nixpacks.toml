@@ -1,5 +1,0 @@
-[phases.setup]
-nixPkgs = ["curl"]
-
-[start]
-cmd = "bash railway_start.sh"
