@@ -1,6 +1,5 @@
 #!/bin/bash
 # Railway startup script - runs backend + telegram bot
-set -e
 
 PORT="${PORT:-8000}"
 echo "Starting ADM Platform on Railway (port: $PORT)..."
@@ -22,17 +21,18 @@ for i in $(seq 1 30); do
     sleep 1
 done
 
-# Start Telegram Bot
-echo "Starting Telegram Bot..."
-cd /app/bot
-PYTHONPATH="/app/bot" API_BASE_URL="http://localhost:$PORT/api/v1" python telegram_bot.py &
-BOT_PID=$!
-echo "Telegram Bot started (PID: $BOT_PID)"
+# Start Telegram Bot (only if token is set)
+if [ -n "$TELEGRAM_BOT_TOKEN" ]; then
+    echo "Starting Telegram Bot..."
+    cd /app/bot
+    PYTHONPATH="/app/bot" API_BASE_URL="http://localhost:$PORT/api/v1" python telegram_bot.py &
+    BOT_PID=$!
+    echo "Telegram Bot started (PID: $BOT_PID)"
+else
+    echo "TELEGRAM_BOT_TOKEN not set, skipping bot."
+fi
 
 echo "All services running!"
 
-# Wait for either process to exit
-wait -n $BACKEND_PID $BOT_PID
-echo "A process exited, shutting down..."
-kill $BACKEND_PID $BOT_PID 2>/dev/null
-exit 1
+# Keep container alive by waiting on backend
+wait $BACKEND_PID
