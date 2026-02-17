@@ -1,8 +1,5 @@
 [phases.setup]
-nixPkgs = ["python39", "gcc", "curl"]
-
-[phases.install]
-cmds = ["pip install -r requirements.txt"]
+nixPkgs = ["curl"]
 
 [start]
 cmd = "bash railway_start.sh"
