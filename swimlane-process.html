@@ -1,0 +1,1843 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Axis Max Life - ADM Agent Activation Platform | Swimlane Process</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+
+        :root {
+            --primary: #E31837;
+            --primary-dark: #B91430;
+            --primary-light: #FF4D6A;
+            --secondary: #1E3A5F;
+            --secondary-light: #2A5080;
+            --accent: #FF8C00;
+            --accent-light: #FFB347;
+            --success: #10B981;
+            --success-light: #34D399;
+            --warning: #F59E0B;
+            --info: #3B82F6;
+            --purple: #8B5CF6;
+            --pink: #EC4899;
+            --teal: #14B8A6;
+            --bg-dark: #0F172A;
+            --bg-card: #1E293B;
+            --bg-card-hover: #334155;
+            --text-primary: #F1F5F9;
+            --text-secondary: #94A3B8;
+            --text-muted: #64748B;
+            --border: #334155;
+            --gradient-1: linear-gradient(135deg, #E31837 0%, #FF4D6A 100%);
+            --gradient-2: linear-gradient(135deg, #1E3A5F 0%, #3B82F6 100%);
+            --gradient-3: linear-gradient(135deg, #FF8C00 0%, #FFB347 100%);
+            --gradient-4: linear-gradient(135deg, #10B981 0%, #34D399 100%);
+            --gradient-5: linear-gradient(135deg, #8B5CF6 0%, #A78BFA 100%);
+            --gradient-6: linear-gradient(135deg, #EC4899 0%, #F472B6 100%);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--bg-dark);
+            color: var(--text-primary);
+            overflow-x: hidden;
+        }
+
+        /* Animated background */
+        .bg-animation {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 0;
+            overflow: hidden;
+        }
+
+        .bg-animation .circle {
+            position: absolute;
+            border-radius: 50%;
+            opacity: 0.03;
+            animation: float 20s infinite;
+        }
+
+        .bg-animation .circle:nth-child(1) {
+            width: 600px;
+            height: 600px;
+            background: var(--primary);
+            top: -100px;
+            right: -100px;
+            animation-delay: 0s;
+        }
+
+        .bg-animation .circle:nth-child(2) {
+            width: 400px;
+            height: 400px;
+            background: var(--info);
+            bottom: -50px;
+            left: -50px;
+            animation-delay: -5s;
+        }
+
+        .bg-animation .circle:nth-child(3) {
+            width: 300px;
+            height: 300px;
+            background: var(--accent);
+            top: 50%;
+            left: 50%;
+            animation-delay: -10s;
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translate(0, 0) scale(1); }
+            25% { transform: translate(50px, -50px) scale(1.1); }
+            50% { transform: translate(-30px, 30px) scale(0.9); }
+            75% { transform: translate(30px, 50px) scale(1.05); }
+        }
+
+        .container {
+            position: relative;
+            z-index: 1;
+            max-width: 1600px;
+            margin: 0 auto;
+            padding: 40px 30px;
+        }
+
+        /* Hero Header */
+        .hero {
+            text-align: center;
+            margin-bottom: 60px;
+            padding: 60px 40px;
+            background: linear-gradient(135deg, rgba(227, 24, 55, 0.15) 0%, rgba(30, 58, 95, 0.15) 100%);
+            border-radius: 24px;
+            border: 1px solid rgba(227, 24, 55, 0.2);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .hero::before {
+            content: '';
+            position: absolute;
+            top: -2px;
+            left: -2px;
+            right: -2px;
+            bottom: -2px;
+            background: linear-gradient(135deg, var(--primary), var(--info), var(--accent));
+            border-radius: 25px;
+            z-index: -1;
+            opacity: 0.3;
+            filter: blur(20px);
+        }
+
+        .hero-logo {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--primary);
+            text-transform: uppercase;
+            letter-spacing: 4px;
+            margin-bottom: 16px;
+        }
+
+        .hero h1 {
+            font-size: 48px;
+            font-weight: 900;
+            background: linear-gradient(135deg, #fff 0%, #94A3B8 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 16px;
+            line-height: 1.1;
+        }
+
+        .hero h2 {
+            font-size: 24px;
+            font-weight: 400;
+            color: var(--text-secondary);
+            margin-bottom: 30px;
+        }
+
+        .hero-stats {
+            display: flex;
+            justify-content: center;
+            gap: 40px;
+            flex-wrap: wrap;
+        }
+
+        .hero-stat {
+            text-align: center;
+            padding: 20px 30px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 16px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            min-width: 180px;
+        }
+
+        .hero-stat .number {
+            font-size: 36px;
+            font-weight: 800;
+            color: var(--primary);
+        }
+
+        .hero-stat .label {
+            font-size: 13px;
+            color: var(--text-secondary);
+            margin-top: 4px;
+        }
+
+        /* Problem Statement */
+        .problem-section {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin-bottom: 60px;
+        }
+
+        .problem-card {
+            padding: 40px;
+            border-radius: 20px;
+            border: 1px solid var(--border);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .problem-card.current {
+            background: linear-gradient(135deg, rgba(239, 68, 68, 0.1) 0%, rgba(30, 41, 59, 0.8) 100%);
+            border-color: rgba(239, 68, 68, 0.3);
+        }
+
+        .problem-card.target {
+            background: linear-gradient(135deg, rgba(16, 185, 129, 0.1) 0%, rgba(30, 41, 59, 0.8) 100%);
+            border-color: rgba(16, 185, 129, 0.3);
+        }
+
+        .problem-card h3 {
+            font-size: 20px;
+            font-weight: 700;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .problem-card .icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+        }
+
+        .problem-card.current .icon { background: rgba(239, 68, 68, 0.2); }
+        .problem-card.target .icon { background: rgba(16, 185, 129, 0.2); }
+
+        .problem-list {
+            list-style: none;
+        }
+
+        .problem-list li {
+            padding: 10px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            font-size: 14px;
+            color: var(--text-secondary);
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+        }
+
+        .problem-list li::before {
+            content: '●';
+            flex-shrink: 0;
+        }
+
+        .problem-card.current .problem-list li::before { color: #EF4444; }
+        .problem-card.target .problem-list li::before { color: #10B981; }
+
+        /* Section Headers */
+        .section-header {
+            text-align: center;
+            margin: 80px 0 40px;
+        }
+
+        .section-header .tag {
+            display: inline-block;
+            padding: 6px 16px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-bottom: 12px;
+        }
+
+        .section-header h2 {
+            font-size: 36px;
+            font-weight: 800;
+            margin-bottom: 10px;
+        }
+
+        .section-header p {
+            font-size: 16px;
+            color: var(--text-secondary);
+            max-width: 700px;
+            margin: 0 auto;
+        }
+
+        /* Phase Indicator */
+        .phase-indicator {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            margin-bottom: 50px;
+        }
+
+        .phase-badge {
+            padding: 16px 32px;
+            border-radius: 16px;
+            font-weight: 700;
+            font-size: 16px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border: 2px solid transparent;
+        }
+
+        .phase-badge.active {
+            transform: scale(1.05);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+
+        .phase-badge.phase1 {
+            background: rgba(227, 24, 55, 0.15);
+            border-color: var(--primary);
+            color: var(--primary-light);
+        }
+
+        .phase-badge.phase2 {
+            background: rgba(59, 130, 246, 0.15);
+            border-color: var(--info);
+            color: #93C5FD;
+        }
+
+        .phase-number {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            font-weight: 800;
+        }
+
+        .phase1 .phase-number { background: var(--primary); color: white; }
+        .phase2 .phase-number { background: var(--info); color: white; }
+
+        /* Swimlane Container */
+        .swimlane-container {
+            margin-bottom: 60px;
+            overflow-x: auto;
+            padding-bottom: 20px;
+        }
+
+        .swimlane {
+            display: grid;
+            grid-template-columns: 200px 1fr;
+            min-width: 1200px;
+            gap: 0;
+        }
+
+        /* Lane Labels */
+        .lane-label {
+            padding: 24px 20px;
+            border-right: 3px solid;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            position: sticky;
+            left: 0;
+            z-index: 2;
+            background: var(--bg-dark);
+        }
+
+        .lane-label .lane-icon {
+            width: 56px;
+            height: 56px;
+            border-radius: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            margin-bottom: 12px;
+        }
+
+        .lane-label .lane-name {
+            font-size: 14px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .lane-label .lane-desc {
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-top: 4px;
+        }
+
+        /* Lane Rows */
+        .lane-row {
+            display: flex;
+            align-items: center;
+            padding: 20px;
+            gap: 16px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            min-height: 120px;
+            flex-wrap: wrap;
+        }
+
+        /* Process Steps */
+        .process-step {
+            padding: 16px 20px;
+            border-radius: 14px;
+            font-size: 13px;
+            font-weight: 500;
+            position: relative;
+            min-width: 160px;
+            max-width: 220px;
+            transition: all 0.3s ease;
+            cursor: default;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .process-step:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+        }
+
+        .process-step .step-title {
+            font-weight: 700;
+            font-size: 13px;
+            margin-bottom: 6px;
+        }
+
+        .process-step .step-desc {
+            font-size: 11px;
+            opacity: 0.8;
+            line-height: 1.4;
+        }
+
+        .process-step .step-channel {
+            display: inline-block;
+            margin-top: 8px;
+            padding: 2px 8px;
+            border-radius: 6px;
+            font-size: 10px;
+            font-weight: 600;
+            background: rgba(255, 255, 255, 0.15);
+        }
+
+        /* Step Colors */
+        .step-axis { background: linear-gradient(135deg, rgba(30, 58, 95, 0.6), rgba(59, 130, 246, 0.3)); border-color: rgba(59, 130, 246, 0.3); }
+        .step-platform { background: linear-gradient(135deg, rgba(139, 92, 246, 0.4), rgba(167, 139, 250, 0.2)); border-color: rgba(139, 92, 246, 0.3); }
+        .step-adm { background: linear-gradient(135deg, rgba(227, 24, 55, 0.4), rgba(255, 77, 106, 0.2)); border-color: rgba(227, 24, 55, 0.3); }
+        .step-whatsapp { background: linear-gradient(135deg, rgba(37, 211, 102, 0.4), rgba(37, 211, 102, 0.15)); border-color: rgba(37, 211, 102, 0.3); }
+        .step-agent { background: linear-gradient(135deg, rgba(255, 140, 0, 0.4), rgba(255, 179, 71, 0.2)); border-color: rgba(255, 140, 0, 0.3); }
+        .step-ai { background: linear-gradient(135deg, rgba(236, 72, 153, 0.4), rgba(244, 114, 182, 0.2)); border-color: rgba(236, 72, 153, 0.3); }
+        .step-voice { background: linear-gradient(135deg, rgba(20, 184, 166, 0.4), rgba(20, 184, 166, 0.15)); border-color: rgba(20, 184, 166, 0.3); }
+
+        /* Flow Arrows */
+        .flow-arrow {
+            font-size: 20px;
+            color: var(--text-muted);
+            flex-shrink: 0;
+        }
+
+        /* Detailed Flow Sections */
+        .flow-section {
+            margin: 40px 0;
+            padding: 40px;
+            background: var(--bg-card);
+            border-radius: 24px;
+            border: 1px solid var(--border);
+        }
+
+        .flow-section h3 {
+            font-size: 22px;
+            font-weight: 700;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .flow-section .flow-subtitle {
+            font-size: 14px;
+            color: var(--text-secondary);
+            margin-bottom: 30px;
+        }
+
+        /* Vertical Flow */
+        .vertical-flow {
+            display: flex;
+            flex-direction: column;
+            gap: 0;
+            position: relative;
+        }
+
+        .vertical-flow::before {
+            content: '';
+            position: absolute;
+            left: 28px;
+            top: 0;
+            bottom: 0;
+            width: 3px;
+            background: linear-gradient(to bottom, var(--primary), var(--info), var(--success));
+            border-radius: 2px;
+        }
+
+        .flow-item {
+            display: flex;
+            gap: 24px;
+            padding: 20px 0;
+            position: relative;
+        }
+
+        .flow-item .flow-dot {
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 22px;
+            flex-shrink: 0;
+            z-index: 1;
+            border: 3px solid var(--bg-card);
+        }
+
+        .flow-item .flow-content {
+            flex: 1;
+            padding: 20px 24px;
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 16px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        .flow-item .flow-content h4 {
+            font-size: 16px;
+            font-weight: 700;
+            margin-bottom: 6px;
+        }
+
+        .flow-item .flow-content p {
+            font-size: 13px;
+            color: var(--text-secondary);
+            line-height: 1.6;
+        }
+
+        .flow-item .flow-content .channels {
+            display: flex;
+            gap: 8px;
+            margin-top: 10px;
+            flex-wrap: wrap;
+        }
+
+        .channel-tag {
+            padding: 4px 10px;
+            border-radius: 8px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+
+        .channel-whatsapp { background: rgba(37, 211, 102, 0.2); color: #25D366; }
+        .channel-voice { background: rgba(20, 184, 166, 0.2); color: #14B8A6; }
+        .channel-app { background: rgba(139, 92, 246, 0.2); color: #A78BFA; }
+        .channel-ai { background: rgba(236, 72, 153, 0.2); color: #F472B6; }
+        .channel-web { background: rgba(59, 130, 246, 0.2); color: #93C5FD; }
+        .channel-auto { background: rgba(255, 140, 0, 0.2); color: #FFB347; }
+
+        /* Grid Cards */
+        .module-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 24px;
+            margin: 30px 0;
+        }
+
+        .module-card {
+            padding: 30px;
+            border-radius: 20px;
+            border: 1px solid var(--border);
+            background: var(--bg-card);
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .module-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
+            border-color: rgba(255, 255, 255, 0.15);
+        }
+
+        .module-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            border-radius: 20px 20px 0 0;
+        }
+
+        .module-card.red::before { background: var(--gradient-1); }
+        .module-card.blue::before { background: var(--gradient-2); }
+        .module-card.orange::before { background: var(--gradient-3); }
+        .module-card.green::before { background: var(--gradient-4); }
+        .module-card.purple::before { background: var(--gradient-5); }
+        .module-card.pink::before { background: var(--gradient-6); }
+
+        .module-card .card-icon {
+            width: 52px;
+            height: 52px;
+            border-radius: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            margin-bottom: 16px;
+        }
+
+        .module-card.red .card-icon { background: rgba(227, 24, 55, 0.15); }
+        .module-card.blue .card-icon { background: rgba(59, 130, 246, 0.15); }
+        .module-card.orange .card-icon { background: rgba(255, 140, 0, 0.15); }
+        .module-card.green .card-icon { background: rgba(16, 185, 129, 0.15); }
+        .module-card.purple .card-icon { background: rgba(139, 92, 246, 0.15); }
+        .module-card.pink .card-icon { background: rgba(236, 72, 153, 0.15); }
+
+        .module-card h4 {
+            font-size: 18px;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+
+        .module-card p {
+            font-size: 13px;
+            color: var(--text-secondary);
+            line-height: 1.6;
+            margin-bottom: 16px;
+        }
+
+        .module-card .feature-list {
+            list-style: none;
+        }
+
+        .module-card .feature-list li {
+            padding: 6px 0;
+            font-size: 12px;
+            color: var(--text-secondary);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .module-card .feature-list li::before {
+            content: '✓';
+            font-weight: 700;
+            font-size: 14px;
+        }
+
+        .module-card.red .feature-list li::before { color: var(--primary); }
+        .module-card.blue .feature-list li::before { color: var(--info); }
+        .module-card.orange .feature-list li::before { color: var(--accent); }
+        .module-card.green .feature-list li::before { color: var(--success); }
+        .module-card.purple .feature-list li::before { color: var(--purple); }
+        .module-card.pink .feature-list li::before { color: var(--pink); }
+
+        /* Tech Stack */
+        .tech-grid {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-top: 20px;
+        }
+
+        .tech-badge {
+            padding: 8px 16px;
+            border-radius: 10px;
+            font-size: 12px;
+            font-weight: 600;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        /* Timeline */
+        .timeline {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 20px;
+            margin: 30px 0;
+        }
+
+        .timeline-item {
+            padding: 24px;
+            border-radius: 16px;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--border);
+            text-align: center;
+        }
+
+        .timeline-item .day {
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--primary);
+            margin-bottom: 8px;
+        }
+
+        .timeline-item h5 {
+            font-size: 14px;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+
+        .timeline-item p {
+            font-size: 12px;
+            color: var(--text-secondary);
+            line-height: 1.5;
+        }
+
+        /* ADM Daily Journey */
+        .journey-container {
+            display: flex;
+            gap: 3px;
+            overflow-x: auto;
+            padding: 20px 0;
+        }
+
+        .journey-step {
+            flex: 1;
+            min-width: 180px;
+            padding: 24px 16px;
+            text-align: center;
+            position: relative;
+            border-radius: 16px;
+        }
+
+        .journey-step .time {
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--accent);
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .journey-step .journey-icon {
+            font-size: 32px;
+            margin-bottom: 10px;
+        }
+
+        .journey-step h5 {
+            font-size: 14px;
+            font-weight: 700;
+            margin-bottom: 6px;
+        }
+
+        .journey-step p {
+            font-size: 11px;
+            color: var(--text-secondary);
+            line-height: 1.5;
+        }
+
+        .journey-step:nth-child(odd) { background: rgba(227, 24, 55, 0.08); }
+        .journey-step:nth-child(even) { background: rgba(59, 130, 246, 0.08); }
+
+        /* Data Flow Diagram */
+        .data-flow {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            padding: 40px 20px;
+            flex-wrap: wrap;
+        }
+
+        .data-node {
+            padding: 20px 24px;
+            border-radius: 16px;
+            text-align: center;
+            min-width: 140px;
+            border: 2px solid;
+        }
+
+        .data-node .node-icon {
+            font-size: 28px;
+            margin-bottom: 8px;
+        }
+
+        .data-node .node-title {
+            font-size: 13px;
+            font-weight: 700;
+        }
+
+        .data-node .node-desc {
+            font-size: 10px;
+            color: var(--text-muted);
+            margin-top: 4px;
+        }
+
+        .data-arrow {
+            font-size: 24px;
+            color: var(--text-muted);
+        }
+
+        .data-node.n1 { background: rgba(37, 211, 102, 0.1); border-color: rgba(37, 211, 102, 0.3); }
+        .data-node.n2 { background: rgba(139, 92, 246, 0.1); border-color: rgba(139, 92, 246, 0.3); }
+        .data-node.n3 { background: rgba(236, 72, 153, 0.1); border-color: rgba(236, 72, 153, 0.3); }
+        .data-node.n4 { background: rgba(255, 140, 0, 0.1); border-color: rgba(255, 140, 0, 0.3); }
+        .data-node.n5 { background: rgba(59, 130, 246, 0.1); border-color: rgba(59, 130, 246, 0.3); }
+
+        /* Footer */
+        .footer {
+            text-align: center;
+            padding: 40px;
+            margin-top: 60px;
+            border-top: 1px solid var(--border);
+        }
+
+        .footer p {
+            font-size: 14px;
+            color: var(--text-muted);
+        }
+
+        /* Tab system */
+        .tab-container {
+            margin: 30px 0;
+        }
+
+        .tab-buttons {
+            display: flex;
+            gap: 4px;
+            margin-bottom: 24px;
+            background: rgba(255, 255, 255, 0.03);
+            padding: 4px;
+            border-radius: 14px;
+            overflow-x: auto;
+        }
+
+        .tab-btn {
+            padding: 12px 24px;
+            border: none;
+            background: transparent;
+            color: var(--text-secondary);
+            font-family: 'Inter', sans-serif;
+            font-size: 13px;
+            font-weight: 600;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            white-space: nowrap;
+        }
+
+        .tab-btn.active {
+            background: var(--primary);
+            color: white;
+        }
+
+        .tab-btn:hover:not(.active) {
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .hero h1 { font-size: 32px; }
+            .hero h2 { font-size: 18px; }
+            .problem-section { grid-template-columns: 1fr; }
+            .timeline { grid-template-columns: 1fr 1fr; }
+            .hero-stats { gap: 16px; }
+            .hero-stat { min-width: 140px; padding: 14px 20px; }
+        }
+
+        /* KPI Boxes */
+        .kpi-row {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 16px;
+            margin: 30px 0;
+        }
+
+        .kpi-box {
+            padding: 20px;
+            border-radius: 16px;
+            text-align: center;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--border);
+        }
+
+        .kpi-box .kpi-value {
+            font-size: 28px;
+            font-weight: 800;
+        }
+
+        .kpi-box .kpi-label {
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-top: 4px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .kpi-box .kpi-change {
+            font-size: 12px;
+            margin-top: 4px;
+            font-weight: 600;
+        }
+
+        .kpi-up { color: var(--success); }
+        .kpi-down { color: #EF4444; }
+
+        /* Comparison Table */
+        .comparison-table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+            margin: 20px 0;
+            border-radius: 16px;
+            overflow: hidden;
+        }
+
+        .comparison-table th {
+            padding: 16px 20px;
+            text-align: left;
+            font-size: 12px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            background: rgba(227, 24, 55, 0.15);
+            color: var(--text-primary);
+        }
+
+        .comparison-table td {
+            padding: 14px 20px;
+            font-size: 13px;
+            color: var(--text-secondary);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .comparison-table tr:hover td {
+            background: rgba(255, 255, 255, 0.02);
+        }
+
+        .badge-before {
+            background: rgba(239, 68, 68, 0.15);
+            color: #FCA5A5;
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+
+        .badge-after {
+            background: rgba(16, 185, 129, 0.15);
+            color: #6EE7B7;
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body>
+    <div class="bg-animation">
+        <div class="circle"></div>
+        <div class="circle"></div>
+        <div class="circle"></div>
+    </div>
+
+    <div class="container">
+        <!-- HERO -->
+        <div class="hero">
+            <div class="hero-logo">Axis Max Life Insurance</div>
+            <h1>Agent Activation & Retention System</h1>
+            <h2>ADM Empowerment Platform - Swimlane Process & System Design</h2>
+            <div class="hero-stats">
+                <div class="hero-stat">
+                    <div class="number">1L+</div>
+                    <div class="label">Total Agents</div>
+                </div>
+                <div class="hero-stat">
+                    <div class="number" style="color: #EF4444;">2%</div>
+                    <div class="label">Currently Active</div>
+                </div>
+                <div class="hero-stat">
+                    <div class="number" style="color: var(--success);">98K</div>
+                    <div class="label">Dormant Agents</div>
+                </div>
+                <div class="hero-stat">
+                    <div class="number" style="color: var(--accent);">&#8377;3.5L</div>
+                    <div class="label">ADM Cost/Year</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- PROBLEM STATEMENT -->
+        <div class="problem-section">
+            <div class="problem-card current">
+                <h3><span class="icon">&#9888;</span> Current State - The Challenge</h3>
+                <ul class="problem-list">
+                    <li>98% of 1 Lakh+ agents are dormant - not punching policies</li>
+                    <li>ADMs manage agent activation on mobile only - no laptops/tablets</li>
+                    <li>Feedback collection is through disparate files - no standardization</li>
+                    <li>No digital diary - ADMs track follow-ups manually or not at all</li>
+                    <li>ADMs struggle to explain 30+ complex insurance products</li>
+                    <li>High ADM attrition due to tough goals and poor tooling</li>
+                    <li>Agent reasons for dormancy are generic - no actionable insights</li>
+                    <li>No automated agent assignment - manual and unoptimized</li>
+                    <li>Feedback consolidation gives generic reasons, not root causes</li>
+                </ul>
+            </div>
+            <div class="problem-card target">
+                <h3><span class="icon">&#9733;</span> Target State - The Vision</h3>
+                <ul class="problem-list">
+                    <li>Increase activation from 2% to 10%+ through ADM empowerment</li>
+                    <li>WhatsApp-first platform - everything at ADM's fingertips</li>
+                    <li>Standardized structured feedback with AI-powered analysis</li>
+                    <li>Smart digital diary with auto-reminders and follow-up alerts</li>
+                    <li>AI training assistant that teaches products conversationally</li>
+                    <li>Reduce ADM attrition by making their job easier and rewarding</li>
+                    <li>Categorized dormancy reasons with recommended action playbooks</li>
+                    <li>Auto-assignment of agents to ADMs based on geography and capacity</li>
+                    <li>Real-time dashboard for Axis leadership with actionable insights</li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- PHASE BADGES -->
+        <div class="section-header">
+            <div class="tag" style="background: rgba(227, 24, 55, 0.15); color: var(--primary-light);">Two-Phase Approach</div>
+            <h2>Platform Phases</h2>
+            <p>Phase 1 focuses on empowering ADMs. When ADMs are equipped, solving for agent activation becomes significantly easier in Phase 2.</p>
+        </div>
+
+        <div class="phase-indicator">
+            <div class="phase-badge phase1 active">
+                <span class="phase-number">1</span>
+                ADM Empowerment Platform
+            </div>
+            <div class="phase-badge phase2">
+                <span class="phase-number">2</span>
+                Agent Self-Service & Engagement
+            </div>
+        </div>
+
+        <!-- ============================================ -->
+        <!-- SWIMLANE DIAGRAM - CORE PROCESS -->
+        <!-- ============================================ -->
+        <div class="section-header">
+            <div class="tag" style="background: rgba(139, 92, 246, 0.15); color: #A78BFA;">Core Process</div>
+            <h2>End-to-End Swimlane Flow</h2>
+            <p>Six actors, one unified process - from agent assignment to reactivation</p>
+        </div>
+
+        <div class="swimlane-container">
+            <div class="swimlane">
+                <!-- Row 1: Axis Admin -->
+                <div class="lane-label" style="border-color: var(--info);">
+                    <div class="lane-icon" style="background: rgba(59, 130, 246, 0.15);">&#127970;</div>
+                    <div class="lane-name" style="color: var(--info);">Axis Admin</div>
+                    <div class="lane-desc">Central Team</div>
+                </div>
+                <div class="lane-row">
+                    <div class="process-step step-axis">
+                        <div class="step-title">Upload Agent Data</div>
+                        <div class="step-desc">CSV/API import of agent base with dormancy status</div>
+                        <span class="step-channel">Web Dashboard</span>
+                    </div>
+                    <span class="flow-arrow">&#10132;</span>
+                    <div class="process-step step-axis">
+                        <div class="step-title">Configure Rules</div>
+                        <div class="step-desc">Set assignment criteria, regions, capacity limits</div>
+                        <span class="step-channel">Web Dashboard</span>
+                    </div>
+                    <span class="flow-arrow">&#10132;</span>
+                    <div class="process-step step-axis">
+                        <div class="step-title">Review Analytics</div>
+                        <div class="step-desc">Monitor activation funnel, ADM performance, feedback trends</div>
+                        <span class="step-channel">Web Dashboard</span>
+                    </div>
+                    <span class="flow-arrow">&#10132;</span>
+                    <div class="process-step step-axis">
+                        <div class="step-title">Action on Feedback</div>
+                        <div class="step-desc">Address systemic issues reported by agents through ADMs</div>
+                        <span class="step-channel">Web + Process</span>
+                    </div>
+                </div>
+
+                <!-- Row 2: Platform/AI Engine -->
+                <div class="lane-label" style="border-color: var(--purple);">
+                    <div class="lane-icon" style="background: rgba(139, 92, 246, 0.15);">&#129302;</div>
+                    <div class="lane-name" style="color: var(--purple);">AI Platform</div>
+                    <div class="lane-desc">Automation Engine</div>
+                </div>
+                <div class="lane-row">
+                    <div class="process-step step-platform">
+                        <div class="step-title">Auto-Assign Agents</div>
+                        <div class="step-desc">Match agents to ADMs by geography, language, capacity</div>
+                        <span class="step-channel">Automated</span>
+                    </div>
+                    <span class="flow-arrow">&#10132;</span>
+                    <div class="process-step step-ai">
+                        <div class="step-title">Generate Briefings</div>
+                        <div class="step-desc">Daily prioritized agent list with context and talking points</div>
+                        <span class="step-channel">AI + WhatsApp</span>
+                    </div>
+                    <span class="flow-arrow">&#10132;</span>
+                    <div class="process-step step-ai">
+                        <div class="step-title">Analyze Feedback</div>
+                        <div class="step-desc">Categorize, sentiment-score, identify patterns across regions</div>
+                        <span class="step-channel">AI Engine</span>
+                    </div>
+                    <span class="flow-arrow">&#10132;</span>
+                    <div class="process-step step-platform">
+                        <div class="step-title">Track & Alert</div>
+                        <div class="step-desc">Follow-up reminders, escalations, performance scoring</div>
+                        <span class="step-channel">Push + WhatsApp</span>
+                    </div>
+                </div>
+
+                <!-- Row 3: ADM on WhatsApp -->
+                <div class="lane-label" style="border-color: var(--primary);">
+                    <div class="lane-icon" style="background: rgba(227, 24, 55, 0.15);">&#128100;</div>
+                    <div class="lane-name" style="color: var(--primary);">ADM</div>
+                    <div class="lane-desc">WhatsApp First</div>
+                </div>
+                <div class="lane-row">
+                    <div class="process-step step-adm">
+                        <div class="step-title">Receive Assignment</div>
+                        <div class="step-desc">Get notified of new agents + morning briefing via WhatsApp</div>
+                        <span class="step-channel">WhatsApp</span>
+                    </div>
+                    <span class="flow-arrow">&#10132;</span>
+                    <div class="process-step step-adm">
+                        <div class="step-title">Contact Agent</div>
+                        <div class="step-desc">Call/WhatsApp agent using guided scripts and talking points</div>
+                        <span class="step-channel">WhatsApp + Call</span>
+                    </div>
+                    <span class="flow-arrow">&#10132;</span>
+                    <div class="process-step step-adm">
+                        <div class="step-title">Capture Feedback</div>
+                        <div class="step-desc">Voice note or structured form to log agent conversation</div>
+                        <span class="step-channel">WhatsApp Bot</span>
+                    </div>
+                    <span class="flow-arrow">&#10132;</span>
+                    <div class="process-step step-adm">
+                        <div class="step-title">Follow-up & Diary</div>
+                        <div class="step-desc">Schedule next contact, view diary, track all interactions</div>
+                        <span class="step-channel">WhatsApp + App</span>
+                    </div>
+                </div>
+
+                <!-- Row 4: WhatsApp Bot -->
+                <div class="lane-label" style="border-color: #25D366;">
+                    <div class="lane-icon" style="background: rgba(37, 211, 102, 0.15);">&#128172;</div>
+                    <div class="lane-name" style="color: #25D366;">WhatsApp Bot</div>
+                    <div class="lane-desc">Communication Hub</div>
+                </div>
+                <div class="lane-row">
+                    <div class="process-step step-whatsapp">
+                        <div class="step-title">Send Agent Outreach</div>
+                        <div class="step-desc">Personalized messages to dormant agents on ADM's behalf</div>
+                        <span class="step-channel">Template Messages</span>
+                    </div>
+                    <span class="flow-arrow">&#10132;</span>
+                    <div class="process-step step-whatsapp">
+                        <div class="step-title">Feedback Forms</div>
+                        <div class="step-desc">Interactive buttons, voice capture, structured feedback flow</div>
+                        <span class="step-channel">Interactive Flow</span>
+                    </div>
+                    <span class="flow-arrow">&#10132;</span>
+                    <div class="process-step step-whatsapp">
+                        <div class="step-title">Training Delivery</div>
+                        <div class="step-desc">Product info cards, quizzes, bite-sized learning modules</div>
+                        <span class="step-channel">Rich Media</span>
+                    </div>
+                    <span class="flow-arrow">&#10132;</span>
+                    <div class="process-step step-whatsapp">
+                        <div class="step-title">Diary Reminders</div>
+                        <div class="step-desc">Auto-send follow-up alerts and daily schedule to ADMs</div>
+                        <span class="step-channel">Scheduled</span>
+                    </div>
+                </div>
+
+                <!-- Row 5: Agent -->
+                <div class="lane-label" style="border-color: var(--accent);">
+                    <div class="lane-icon" style="background: rgba(255, 140, 0, 0.15);">&#128188;</div>
+                    <div class="lane-name" style="color: var(--accent);">Agent</div>
+                    <div class="lane-desc">Dormant / At-Risk</div>
+                </div>
+                <div class="lane-row">
+                    <div class="process-step step-agent">
+                        <div class="step-title">Receive Contact</div>
+                        <div class="step-desc">WhatsApp message or call from assigned ADM</div>
+                        <span class="step-channel">WhatsApp / Call</span>
+                    </div>
+                    <span class="flow-arrow">&#10132;</span>
+                    <div class="process-step step-agent">
+                        <div class="step-title">Share Concerns</div>
+                        <div class="step-desc">Express reasons for dormancy - system issues, market, support</div>
+                        <span class="step-channel">Voice / Chat</span>
+                    </div>
+                    <span class="flow-arrow">&#10132;</span>
+                    <div class="process-step step-agent">
+                        <div class="step-title">Get Trained</div>
+                        <div class="step-desc">Receive product training, market insights, sales tips</div>
+                        <span class="step-channel">WhatsApp / App</span>
+                    </div>
+                    <span class="flow-arrow">&#10132;</span>
+                    <div class="process-step step-agent" style="background: linear-gradient(135deg, rgba(16, 185, 129, 0.5), rgba(16, 185, 129, 0.2)); border-color: rgba(16, 185, 129, 0.4);">
+                        <div class="step-title">&#9989; Reactivated</div>
+                        <div class="step-desc">Issues resolved, trained, starts punching policies again</div>
+                        <span class="step-channel">Activated!</span>
+                    </div>
+                </div>
+
+                <!-- Row 6: Voice AI -->
+                <div class="lane-label" style="border-color: var(--teal);">
+                    <div class="lane-icon" style="background: rgba(20, 184, 166, 0.15);">&#127908;</div>
+                    <div class="lane-name" style="color: var(--teal);">Voice AI</div>
+                    <div class="lane-desc">Speech Engine</div>
+                </div>
+                <div class="lane-row">
+                    <div class="process-step step-voice">
+                        <div class="step-title">Voice Feedback</div>
+                        <div class="step-desc">ADMs record voice notes - transcribed & analyzed by AI</div>
+                        <span class="step-channel">Voice-to-Text</span>
+                    </div>
+                    <span class="flow-arrow">&#10132;</span>
+                    <div class="process-step step-voice">
+                        <div class="step-title">Product Q&A</div>
+                        <div class="step-desc">ADMs ask product questions via voice - get instant answers</div>
+                        <span class="step-channel">Voice Assistant</span>
+                    </div>
+                    <span class="flow-arrow">&#10132;</span>
+                    <div class="process-step step-voice">
+                        <div class="step-title">Sentiment Analysis</div>
+                        <div class="step-desc">Analyze agent call recordings for sentiment and key themes</div>
+                        <span class="step-channel">AI Analysis</span>
+                    </div>
+                    <span class="flow-arrow">&#10132;</span>
+                    <div class="process-step step-voice">
+                        <div class="step-title">Coaching Tips</div>
+                        <div class="step-desc">Generate personalized coaching based on conversation quality</div>
+                        <span class="step-channel">AI Coach</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ============================================ -->
+        <!-- DETAILED FLOWS - TABBED -->
+        <!-- ============================================ -->
+        <div class="section-header">
+            <div class="tag" style="background: rgba(16, 185, 129, 0.15); color: var(--success-light);">Detailed Flows</div>
+            <h2>Deep Dive: Core Process Flows</h2>
+            <p>Each of the three ADM core responsibilities broken down step by step</p>
+        </div>
+
+        <div class="tab-container">
+            <div class="tab-buttons">
+                <button class="tab-btn active" onclick="switchTab('feedback')">&#128221; Feedback Loop</button>
+                <button class="tab-btn" onclick="switchTab('diary')">&#128197; Digital Diary</button>
+                <button class="tab-btn" onclick="switchTab('training')">&#127891; Training Module</button>
+                <button class="tab-btn" onclick="switchTab('assignment')">&#128260; Auto-Assignment</button>
+                <button class="tab-btn" onclick="switchTab('analytics')">&#128200; Analytics & Insights</button>
+            </div>
+
+            <!-- FEEDBACK LOOP TAB -->
+            <div class="tab-content active" id="tab-feedback">
+                <div class="flow-section" style="margin: 0;">
+                    <h3>&#128221; Feedback Loop - Standardized Collection & AI Analysis</h3>
+                    <div class="flow-subtitle">From scattered Excel files to structured, actionable intelligence</div>
+
+                    <div class="vertical-flow">
+                        <div class="flow-item">
+                            <div class="flow-dot" style="background: var(--gradient-1);">&#9312;</div>
+                            <div class="flow-content">
+                                <h4>ADM Contacts Agent</h4>
+                                <p>ADM reaches out to assigned dormant agent via WhatsApp or phone call. Gets a talking-points brief with agent history, last policy date, and dormancy duration.</p>
+                                <div class="channels">
+                                    <span class="channel-tag channel-whatsapp">WhatsApp</span>
+                                    <span class="channel-tag channel-voice">Phone Call</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="flow-item">
+                            <div class="flow-dot" style="background: var(--gradient-2);">&#9313;</div>
+                            <div class="flow-content">
+                                <h4>Structured Feedback Capture</h4>
+                                <p>After conversation, ADM logs feedback via WhatsApp bot. Options: (a) Voice note - AI transcribes and categorizes, (b) Interactive buttons - select from standardized dormancy categories like "System Issues", "Commission Concerns", "Market Conditions", "Product Complexity", "Personal Reasons", "Competition", "Support Issues". Each category has sub-options for granular data.</p>
+                                <div class="channels">
+                                    <span class="channel-tag channel-whatsapp">WhatsApp Bot</span>
+                                    <span class="channel-tag channel-voice">Voice Note</span>
+                                    <span class="channel-tag channel-ai">AI Categorization</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="flow-item">
+                            <div class="flow-dot" style="background: var(--gradient-5);">&#9314;</div>
+                            <div class="flow-content">
+                                <h4>AI Analysis & Pattern Detection</h4>
+                                <p>AI engine processes feedback in real-time: sentiment scoring, theme extraction, trend identification across regions/products. Detects systemic issues (e.g., "30% of agents in UP report portal downtime") vs individual issues.</p>
+                                <div class="channels">
+                                    <span class="channel-tag channel-ai">AI Engine</span>
+                                    <span class="channel-tag channel-auto">Auto-Processing</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="flow-item">
+                            <div class="flow-dot" style="background: var(--gradient-3);">&#9315;</div>
+                            <div class="flow-content">
+                                <h4>Action Recommendation</h4>
+                                <p>Based on feedback category, AI generates specific action playbooks for ADM: "Agent reported commission delay - Escalate to finance with ticket #, share commission structure document, schedule follow-up in 5 days". ADM receives these as actionable next steps.</p>
+                                <div class="channels">
+                                    <span class="channel-tag channel-ai">AI Playbook</span>
+                                    <span class="channel-tag channel-whatsapp">WhatsApp Alert</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="flow-item">
+                            <div class="flow-dot" style="background: var(--gradient-4);">&#9316;</div>
+                            <div class="flow-content">
+                                <h4>Axis Team Dashboard</h4>
+                                <p>Aggregated insights flow to Axis leadership: feedback heatmaps by region, top dormancy reasons trending, ADM performance metrics, systemic issues requiring organizational action. Auto-generated weekly/monthly reports.</p>
+                                <div class="channels">
+                                    <span class="channel-tag channel-web">Web Dashboard</span>
+                                    <span class="channel-tag channel-auto">Auto-Reports</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- DIGITAL DIARY TAB -->
+            <div class="tab-content" id="tab-diary">
+                <div class="flow-section" style="margin: 0;">
+                    <h3>&#128197; ADM Digital Diary - Smart Task Management</h3>
+                    <div class="flow-subtitle">Never miss a follow-up. Every interaction tracked. Every agent accounted for.</div>
+
+                    <h4 style="margin: 20px 0 16px; font-size: 16px; color: var(--accent);">A Day in ADM's Life (WhatsApp-First)</h4>
+                    <div class="journey-container">
+                        <div class="journey-step">
+                            <div class="time">8:00 AM</div>
+                            <div class="journey-icon">&#9728;&#65039;</div>
+                            <h5>Morning Brief</h5>
+                            <p>WhatsApp message with today's priority agents, pending follow-ups, and new assignments</p>
+                        </div>
+                        <div class="journey-step">
+                            <div class="time">9:00 AM</div>
+                            <div class="journey-icon">&#128222;</div>
+                            <h5>Agent Calls</h5>
+                            <p>Call priority agents. After each call, quick voice-note or button-based log via WhatsApp</p>
+                        </div>
+                        <div class="journey-step">
+                            <div class="time">11:00 AM</div>
+                            <div class="journey-icon">&#128172;</div>
+                            <h5>WhatsApp Outreach</h5>
+                            <p>Send personalized messages to agents who didn't answer calls. Use templates with one-tap customization</p>
+                        </div>
+                        <div class="journey-step">
+                            <div class="time">1:00 PM</div>
+                            <div class="journey-icon">&#127891;</div>
+                            <h5>Quick Training</h5>
+                            <p>10-min product refresher module. New product launched? AI-generated summary with key selling points</p>
+                        </div>
+                        <div class="journey-step">
+                            <div class="time">3:00 PM</div>
+                            <div class="journey-icon">&#128221;</div>
+                            <h5>Follow-ups</h5>
+                            <p>System alerts for scheduled follow-ups. Context from previous conversations shown automatically</p>
+                        </div>
+                        <div class="journey-step">
+                            <div class="time">5:00 PM</div>
+                            <div class="journey-icon">&#128202;</div>
+                            <h5>Day Summary</h5>
+                            <p>Auto-generated report: calls made, agents contacted, feedback logged, follow-ups scheduled</p>
+                        </div>
+                    </div>
+
+                    <div class="vertical-flow" style="margin-top: 30px;">
+                        <div class="flow-item">
+                            <div class="flow-dot" style="background: var(--gradient-1);">&#128197;</div>
+                            <div class="flow-content">
+                                <h4>Agent Queue Management</h4>
+                                <p>ADM sees prioritized queue: "Red" (overdue follow-up), "Yellow" (due today), "Green" (upcoming). Each agent card shows: name, last contact date, dormancy duration, previous feedback summary, recommended action.</p>
+                            </div>
+                        </div>
+                        <div class="flow-item">
+                            <div class="flow-dot" style="background: var(--gradient-2);">&#128221;</div>
+                            <div class="flow-content">
+                                <h4>Conversation Logging</h4>
+                                <p>After every agent interaction, ADM logs: outcome (connected/not answered/busy), conversation summary (voice note auto-transcribed), next action required, follow-up date. All via WhatsApp - no separate app needed.</p>
+                            </div>
+                        </div>
+                        <div class="flow-item">
+                            <div class="flow-dot" style="background: var(--gradient-3);">&#128276;</div>
+                            <div class="flow-content">
+                                <h4>Smart Reminders</h4>
+                                <p>System sends WhatsApp reminders: "Follow-up with Rajesh Kumar due today. Last conversation: He mentioned portal issues. Status: Axis IT team resolved the bug last week. Suggest informing him."</p>
+                            </div>
+                        </div>
+                        <div class="flow-item">
+                            <div class="flow-dot" style="background: var(--gradient-4);">&#128200;</div>
+                            <div class="flow-content">
+                                <h4>Performance Tracking</h4>
+                                <p>ADM can check their own stats anytime: "Show my stats" on WhatsApp. Gets: agents contacted this week, activation rate, pending follow-ups, comparison with peers (anonymized).</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TRAINING MODULE TAB -->
+            <div class="tab-content" id="tab-training">
+                <div class="flow-section" style="margin: 0;">
+                    <h3>&#127891; Training Module - AI-Powered Product Knowledge</h3>
+                    <div class="flow-subtitle">30+ complex products made simple. Learn by asking, not reading manuals.</div>
+
+                    <div class="module-grid">
+                        <div class="module-card red">
+                            <div class="card-icon">&#128218;</div>
+                            <h4>Product Knowledge Base</h4>
+                            <p>All Axis Max Life products indexed and structured for instant retrieval</p>
+                            <ul class="feature-list">
+                                <li>Term Insurance (4 plans)</li>
+                                <li>Savings & Guaranteed (8 plans)</li>
+                                <li>ULIPs (7 plans)</li>
+                                <li>Pension (4 plans)</li>
+                                <li>Child Plans (2 plans)</li>
+                                <li>Group Insurance (8 plans)</li>
+                            </ul>
+                        </div>
+                        <div class="module-card blue">
+                            <div class="card-icon">&#129302;</div>
+                            <h4>AI Product Assistant</h4>
+                            <p>Ask anything about any product in Hindi or English - get instant, accurate answers</p>
+                            <ul class="feature-list">
+                                <li>"Smart Term Plan kya hai?" - Instant explanation</li>
+                                <li>"Compare SWAG vs Smart FD" - Side by side</li>
+                                <li>"60 saal ke liye konsa plan?" - Age-based recommendation</li>
+                                <li>"Commission kitna milega?" - Commission structure</li>
+                            </ul>
+                        </div>
+                        <div class="module-card green">
+                            <div class="card-icon">&#127911;</div>
+                            <h4>Voice-Based Learning</h4>
+                            <p>ADMs can learn by speaking - perfect for field use while commuting or between meetings</p>
+                            <ul class="feature-list">
+                                <li>Ask product questions via voice</li>
+                                <li>Listen to product summaries as audio</li>
+                                <li>Practice sales pitches with AI feedback</li>
+                                <li>Roleplay agent objection handling</li>
+                            </ul>
+                        </div>
+                        <div class="module-card orange">
+                            <div class="card-icon">&#128240;</div>
+                            <h4>Bite-Sized Modules</h4>
+                            <p>5-10 minute daily learning modules delivered via WhatsApp</p>
+                            <ul class="feature-list">
+                                <li>New product launch training</li>
+                                <li>Regulatory updates (IRDAI)</li>
+                                <li>Sales technique tips</li>
+                                <li>Competitor comparison cards</li>
+                            </ul>
+                        </div>
+                        <div class="module-card purple">
+                            <div class="card-icon">&#128170;</div>
+                            <h4>Empathy & Objection Handling</h4>
+                            <p>Train ADMs to understand and respond to agent concerns with empathy</p>
+                            <ul class="feature-list">
+                                <li>"Agent says commission is too low" - Response guide</li>
+                                <li>"Agent says LIC is easier" - Comparison talking points</li>
+                                <li>"Agent says portal is too complex" - Walkthrough help</li>
+                                <li>"Agent lost interest" - Re-engagement script</li>
+                            </ul>
+                        </div>
+                        <div class="module-card pink">
+                            <div class="card-icon">&#127942;</div>
+                            <h4>Quizzes & Certifications</h4>
+                            <p>Gamified learning with rewards and recognition</p>
+                            <ul class="feature-list">
+                                <li>Daily product quiz via WhatsApp</li>
+                                <li>Weekly knowledge assessments</li>
+                                <li>Leaderboard among ADMs</li>
+                                <li>Badges and streak tracking</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- AUTO-ASSIGNMENT TAB -->
+            <div class="tab-content" id="tab-assignment">
+                <div class="flow-section" style="margin: 0;">
+                    <h3>&#128260; Automatic Agent-ADM Assignment</h3>
+                    <div class="flow-subtitle">Smart matching based on geography, language, capacity, and historical success</div>
+
+                    <div class="data-flow">
+                        <div class="data-node n1">
+                            <div class="node-icon">&#128194;</div>
+                            <div class="node-title">Agent Data</div>
+                            <div class="node-desc">Location, language, status</div>
+                        </div>
+                        <span class="data-arrow">&#10132;</span>
+                        <div class="data-node n2">
+                            <div class="node-icon">&#129302;</div>
+                            <div class="node-title">Matching Engine</div>
+                            <div class="node-desc">Rules + ML scoring</div>
+                        </div>
+                        <span class="data-arrow">&#10132;</span>
+                        <div class="data-node n3">
+                            <div class="node-icon">&#128101;</div>
+                            <div class="node-title">ADM Pool</div>
+                            <div class="node-desc">Capacity, skills, region</div>
+                        </div>
+                        <span class="data-arrow">&#10132;</span>
+                        <div class="data-node n4">
+                            <div class="node-icon">&#9989;</div>
+                            <div class="node-title">Assignment</div>
+                            <div class="node-desc">ADM &#8596; Agent mapping</div>
+                        </div>
+                        <span class="data-arrow">&#10132;</span>
+                        <div class="data-node n5">
+                            <div class="node-icon">&#128172;</div>
+                            <div class="node-title">Notification</div>
+                            <div class="node-desc">WhatsApp to ADM</div>
+                        </div>
+                    </div>
+
+                    <div class="vertical-flow" style="margin-top: 30px;">
+                        <div class="flow-item">
+                            <div class="flow-dot" style="background: var(--gradient-2);">&#9312;</div>
+                            <div class="flow-content">
+                                <h4>Assignment Criteria</h4>
+                                <p><strong>Geography:</strong> ADM and agent in same pin code cluster / district<br>
+                                <strong>Language:</strong> Matching preferred language (Hindi, English, regional)<br>
+                                <strong>Capacity:</strong> ADM's current active agent load vs max capacity<br>
+                                <strong>History:</strong> ADM's success rate with similar dormancy profiles<br>
+                                <strong>Priority:</strong> High-value agents (previously productive) assigned first</p>
+                            </div>
+                        </div>
+                        <div class="flow-item">
+                            <div class="flow-dot" style="background: var(--gradient-1);">&#9313;</div>
+                            <div class="flow-content">
+                                <h4>Rebalancing</h4>
+                                <p>Weekly auto-rebalance: if an ADM is underperforming or overloaded, agents are redistributed. ADMs leaving are auto-reassigned. New ADMs onboarded get gradual ramp-up load.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ANALYTICS TAB -->
+            <div class="tab-content" id="tab-analytics">
+                <div class="flow-section" style="margin: 0;">
+                    <h3>&#128200; Analytics & Insights Dashboard</h3>
+                    <div class="flow-subtitle">Real-time visibility for Axis leadership into the entire activation engine</div>
+
+                    <div class="kpi-row">
+                        <div class="kpi-box">
+                            <div class="kpi-value" style="color: var(--primary);">2% &#10132; 12%</div>
+                            <div class="kpi-label">Activation Rate</div>
+                            <div class="kpi-change kpi-up">Target: 6x improvement</div>
+                        </div>
+                        <div class="kpi-box">
+                            <div class="kpi-value" style="color: var(--info);">85%</div>
+                            <div class="kpi-label">ADM Utilization</div>
+                            <div class="kpi-change kpi-up">Target from current 40%</div>
+                        </div>
+                        <div class="kpi-box">
+                            <div class="kpi-value" style="color: var(--success);">72hrs</div>
+                            <div class="kpi-label">Avg First Contact</div>
+                            <div class="kpi-change kpi-up">Target from 15 days</div>
+                        </div>
+                        <div class="kpi-box">
+                            <div class="kpi-value" style="color: var(--accent);">94%</div>
+                            <div class="kpi-label">Feedback Capture</div>
+                            <div class="kpi-change kpi-up">Target from 20%</div>
+                        </div>
+                        <div class="kpi-box">
+                            <div class="kpi-value" style="color: var(--purple);">30%</div>
+                            <div class="kpi-label">ADM Retention</div>
+                            <div class="kpi-change kpi-up">Reduce attrition by 30%</div>
+                        </div>
+                    </div>
+
+                    <table class="comparison-table">
+                        <tr>
+                            <th>Metric</th>
+                            <th>Before Platform</th>
+                            <th>After Platform</th>
+                            <th>Impact</th>
+                        </tr>
+                        <tr>
+                            <td>Feedback collection method</td>
+                            <td><span class="badge-before">Disparate Excel files</span></td>
+                            <td><span class="badge-after">Structured WhatsApp + Voice</span></td>
+                            <td>Standardized, AI-analyzed</td>
+                        </tr>
+                        <tr>
+                            <td>ADM daily agent contacts</td>
+                            <td><span class="badge-before">5-8 agents/day</span></td>
+                            <td><span class="badge-after">15-20 agents/day</span></td>
+                            <td>2.5x more coverage</td>
+                        </tr>
+                        <tr>
+                            <td>Product knowledge refresh</td>
+                            <td><span class="badge-before">Annual classroom</span></td>
+                            <td><span class="badge-after">Daily 5-min WhatsApp modules</span></td>
+                            <td>Always current, always ready</td>
+                        </tr>
+                        <tr>
+                            <td>Follow-up compliance</td>
+                            <td><span class="badge-before">~20% on time</span></td>
+                            <td><span class="badge-after">~90% on time</span></td>
+                            <td>Auto-reminders on WhatsApp</td>
+                        </tr>
+                        <tr>
+                            <td>Agent assignment</td>
+                            <td><span class="badge-before">Manual, geography-only</span></td>
+                            <td><span class="badge-after">AI-optimized multi-factor</span></td>
+                            <td>Better match, better outcomes</td>
+                        </tr>
+                        <tr>
+                            <td>Dormancy analysis</td>
+                            <td><span class="badge-before">Quarterly manual report</span></td>
+                            <td><span class="badge-after">Real-time AI insights</span></td>
+                            <td>Instant systemic issue detection</td>
+                        </tr>
+                        <tr>
+                            <td>ADM tools</td>
+                            <td><span class="badge-before">Paper + basic phone</span></td>
+                            <td><span class="badge-after">WhatsApp AI assistant</span></td>
+                            <td>Everything in their pocket</td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- ============================================ -->
+        <!-- SYSTEM ARCHITECTURE -->
+        <!-- ============================================ -->
+        <div class="section-header">
+            <div class="tag" style="background: rgba(59, 130, 246, 0.15); color: #93C5FD;">System Architecture</div>
+            <h2>Technical Architecture</h2>
+            <p>WhatsApp-first, AI-powered, mobile-optimized</p>
+        </div>
+
+        <div class="flow-section">
+            <h3>&#9889; Technology Stack</h3>
+            <div class="flow-subtitle">Built for scale, speed, and simplicity</div>
+
+            <div class="module-grid">
+                <div class="module-card blue">
+                    <div class="card-icon">&#128187;</div>
+                    <h4>Frontend - Web Dashboard</h4>
+                    <p>Axis admin & analytics portal</p>
+                    <ul class="feature-list">
+                        <li>Next.js 14 + React + TypeScript</li>
+                        <li>Tailwind CSS (Axis brand colors)</li>
+                        <li>Recharts for data visualization</li>
+                        <li>Responsive design</li>
+                    </ul>
+                </div>
+                <div class="module-card green">
+                    <div class="card-icon">&#128241;</div>
+                    <h4>Mobile - WhatsApp/Telegram</h4>
+                    <p>ADM's primary interface</p>
+                    <ul class="feature-list">
+                        <li>Telegram Bot API (demo) / WhatsApp Business API (prod)</li>
+                        <li>Interactive buttons & quick replies</li>
+                        <li>Voice note processing</li>
+                        <li>Rich media cards for training</li>
+                    </ul>
+                </div>
+                <div class="module-card purple">
+                    <div class="card-icon">&#129302;</div>
+                    <h4>AI Engine</h4>
+                    <p>Intelligence layer powering the platform</p>
+                    <ul class="feature-list">
+                        <li>LLM for product Q&A (Claude/GPT)</li>
+                        <li>Speech-to-text for voice notes</li>
+                        <li>Sentiment analysis on feedback</li>
+                        <li>Smart recommendation engine</li>
+                    </ul>
+                </div>
+                <div class="module-card red">
+                    <div class="card-icon">&#128295;</div>
+                    <h4>Backend & Infrastructure</h4>
+                    <p>Core platform services</p>
+                    <ul class="feature-list">
+                        <li>FastAPI (Python) - Async REST API</li>
+                        <li>PostgreSQL + Redis</li>
+                        <li>Celery for background jobs</li>
+                        <li>Docker + cloud deployment</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- DATA FLOW -->
+        <div class="flow-section">
+            <h3>&#128256; End-to-End Data Flow</h3>
+            <div class="flow-subtitle">How data moves through the system</div>
+
+            <div class="data-flow" style="flex-direction: column; gap: 24px;">
+                <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap; justify-content: center;">
+                    <div class="data-node n1">
+                        <div class="node-icon">&#128194;</div>
+                        <div class="node-title">Agent Data (CSV/API)</div>
+                        <div class="node-desc">Axis uploads agent master</div>
+                    </div>
+                    <span class="data-arrow">&#10132;</span>
+                    <div class="data-node n2">
+                        <div class="node-icon">&#128260;</div>
+                        <div class="node-title">Assignment Engine</div>
+                        <div class="node-desc">Auto-match to ADMs</div>
+                    </div>
+                    <span class="data-arrow">&#10132;</span>
+                    <div class="data-node n3">
+                        <div class="node-icon">&#128172;</div>
+                        <div class="node-title">WhatsApp/Telegram</div>
+                        <div class="node-desc">ADM receives tasks</div>
+                    </div>
+                </div>
+                <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap; justify-content: center;">
+                    <div class="data-node n3">
+                        <div class="node-icon">&#128100;</div>
+                        <div class="node-title">ADM Actions</div>
+                        <div class="node-desc">Calls, messages, feedback</div>
+                    </div>
+                    <span class="data-arrow">&#10132;</span>
+                    <div class="data-node n2">
+                        <div class="node-icon">&#129302;</div>
+                        <div class="node-title">AI Processing</div>
+                        <div class="node-desc">Analyze, categorize, score</div>
+                    </div>
+                    <span class="data-arrow">&#10132;</span>
+                    <div class="data-node n4">
+                        <div class="node-icon">&#128202;</div>
+                        <div class="node-title">Insights Dashboard</div>
+                        <div class="node-desc">Axis admin view</div>
+                    </div>
+                    <span class="data-arrow">&#10132;</span>
+                    <div class="data-node n5">
+                        <div class="node-icon">&#9889;</div>
+                        <div class="node-title">Action Items</div>
+                        <div class="node-desc">Fix systemic issues</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ============================================ -->
+        <!-- IMPLEMENTATION ROADMAP -->
+        <!-- ============================================ -->
+        <div class="section-header">
+            <div class="tag" style="background: rgba(255, 140, 0, 0.15); color: var(--accent-light);">Roadmap</div>
+            <h2>Implementation Phases</h2>
+            <p>From demo to production in structured phases</p>
+        </div>
+
+        <div class="timeline">
+            <div class="timeline-item" style="border-top: 3px solid var(--primary);">
+                <div class="day" style="color: var(--primary);">Phase 0 - Demo</div>
+                <h5>Tomorrow's Client Showcase</h5>
+                <p>Telegram bot demo, core feedback flow, product Q&A, digital diary basics, swimlane presentation, sample analytics dashboard</p>
+            </div>
+            <div class="timeline-item" style="border-top: 3px solid var(--info);">
+                <div class="day" style="color: var(--info);">Phase 1 - Week 1-4</div>
+                <h5>ADM MVP</h5>
+                <p>WhatsApp integration, structured feedback, digital diary, product training AI, auto-assignment, basic analytics</p>
+            </div>
+            <div class="timeline-item" style="border-top: 3px solid var(--accent);">
+                <div class="day" style="color: var(--accent);">Phase 2 - Week 5-8</div>
+                <h5>Agent Engagement</h5>
+                <p>Direct agent communication, self-service training for agents, feedback loop closure, gamification</p>
+            </div>
+            <div class="timeline-item" style="border-top: 3px solid var(--success);">
+                <div class="day" style="color: var(--success);">Phase 3 - Week 9-12</div>
+                <h5>Scale & Optimize</h5>
+                <p>Advanced analytics, ML-based predictions, voice AI integration, regional language support, performance optimization</p>
+            </div>
+        </div>
+
+        <!-- FOOTER -->
+        <div class="footer">
+            <p>Axis Max Life - Agent Activation & Retention System | ADM Empowerment Platform</p>
+            <p style="margin-top: 8px; font-size: 12px; color: var(--text-muted);">Confidential - Client Presentation Material</p>
+        </div>
+    </div>
+
+    <script>
+        function switchTab(tabId) {
+            // Remove active from all tabs
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+
+            // Activate selected
+            document.getElementById('tab-' + tabId).classList.add('active');
+
+            // Find and activate button
+            const buttons = document.querySelectorAll('.tab-btn');
+            const tabMap = { 'feedback': 0, 'diary': 1, 'training': 2, 'assignment': 3, 'analytics': 4 };
+            buttons[tabMap[tabId]].classList.add('active');
+        }
+
+        // Add smooth scroll behavior
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                document.querySelector(this.getAttribute('href')).scrollIntoView({
+                    behavior: 'smooth'
+                });
+            });
+        });
+    </script>
+</body>
+</html>

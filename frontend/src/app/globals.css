@@ -1,0 +1,404 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ===== THEME CSS VARIABLES ===== */
+/* Dark theme (default) */
+:root, .dark {
+  --brand-red: #E31837;
+  --brand-navy: #1E3A5F;
+  --surface-dark: #0B1120;
+  --surface-card: #111827;
+  --surface-card-hover: #1A2332;
+  --surface-border: #1F2937;
+  --surface-border-light: #374151;
+  --text-primary: #FFFFFF;
+  --text-secondary: #E5E7EB;
+  --text-muted: #9CA3AF;
+  --text-faint: #6B7280;
+  --sidebar-bg: linear-gradient(180deg, #0F172A 0%, #0B1120 100%);
+  --sidebar-border: rgba(31, 41, 55, 0.6);
+  --header-bg: rgba(11, 17, 32, 0.8);
+  --input-bg: #111827;
+  --scrollbar-track: #0B1120;
+  --scrollbar-thumb: #1F2937;
+  --scrollbar-thumb-hover: #374151;
+  --overlay-bg: rgba(0, 0, 0, 0.6);
+  --tooltip-bg: #111827;
+  --tooltip-border: #1F2937;
+  color-scheme: dark;
+}
+
+/* Light theme */
+.light {
+  --brand-red: #E31837;
+  --brand-navy: #1E3A5F;
+  --surface-dark: #F8FAFC;
+  --surface-card: #FFFFFF;
+  --surface-card-hover: #F1F5F9;
+  --surface-border: #E2E8F0;
+  --surface-border-light: #CBD5E1;
+  --text-primary: #0F172A;
+  --text-secondary: #1E293B;
+  --text-muted: #64748B;
+  --text-faint: #94A3B8;
+  --sidebar-bg: linear-gradient(180deg, #1E293B 0%, #0F172A 100%);
+  --sidebar-border: rgba(30, 41, 59, 0.3);
+  --header-bg: rgba(255, 255, 255, 0.85);
+  --input-bg: #F1F5F9;
+  --scrollbar-track: #F1F5F9;
+  --scrollbar-thumb: #CBD5E1;
+  --scrollbar-thumb-hover: #94A3B8;
+  --overlay-bg: rgba(0, 0, 0, 0.4);
+  --tooltip-bg: #FFFFFF;
+  --tooltip-border: #E2E8F0;
+  color-scheme: light;
+}
+
+/* ===== SCROLLBAR ===== */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+*::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+}
+
+*::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 3px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}
+
+/* ===== BODY BASE ===== */
+body {
+  background: var(--surface-dark);
+  color: var(--text-secondary);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* ===== COMPONENT LAYER ===== */
+@layer components {
+  .glass-card {
+    background: var(--surface-card);
+    opacity: 0.96;
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid var(--surface-border);
+    border-radius: 0.75rem;
+  }
+
+  .glass-card-hover {
+    background: var(--surface-card);
+    opacity: 0.96;
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid var(--surface-border);
+    border-radius: 0.75rem;
+    transition: all 0.3s;
+  }
+
+  .glass-card-hover:hover {
+    background: var(--surface-card-hover);
+    border-color: var(--surface-border-light);
+    box-shadow: 0 10px 15px -3px rgba(227, 24, 55, 0.05);
+  }
+
+  .gradient-border {
+    position: relative;
+  }
+
+  .gradient-border::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(135deg, rgba(227, 24, 55, 0.5), rgba(30, 58, 95, 0.5));
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+  }
+
+  .stat-value {
+    @apply text-3xl font-bold;
+    color: var(--text-primary);
+  }
+
+  .section-title {
+    @apply text-lg font-semibold mb-4;
+    color: var(--text-primary);
+  }
+
+  .nav-item {
+    @apply flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 cursor-pointer;
+    color: var(--text-muted);
+  }
+
+  .nav-item:hover {
+    color: var(--text-primary);
+    background: rgba(255, 255, 255, 0.05);
+  }
+
+  .nav-item-active {
+    @apply flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 cursor-pointer;
+    color: var(--text-primary);
+    background: rgba(227, 24, 55, 0.1);
+    border: 1px solid rgba(227, 24, 55, 0.2);
+  }
+
+  .badge {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+  }
+
+  .input-dark {
+    background: var(--input-bg);
+    border: 1px solid var(--surface-border);
+    border-radius: 0.5rem;
+    padding: 0.5rem 1rem;
+    color: var(--text-secondary);
+    transition: all 0.2s;
+  }
+
+  .input-dark::placeholder {
+    color: var(--text-faint);
+  }
+
+  .input-dark:focus {
+    outline: none;
+    border-color: rgba(227, 24, 55, 0.5);
+    box-shadow: 0 0 0 1px rgba(227, 24, 55, 0.2);
+  }
+
+  .btn-primary {
+    @apply bg-brand-red hover:bg-brand-red-dark text-white px-4 py-2 rounded-lg font-medium transition-all duration-200 hover:shadow-lg hover:shadow-brand-red/20;
+  }
+
+  .btn-secondary {
+    @apply bg-brand-navy/50 hover:bg-brand-navy text-white px-4 py-2 rounded-lg font-medium border border-brand-navy-light/30 transition-all duration-200;
+  }
+}
+
+@layer utilities {
+  .text-gradient {
+    @apply bg-gradient-to-r from-brand-red to-brand-red-light bg-clip-text text-transparent;
+  }
+
+  .text-gradient-navy {
+    @apply bg-gradient-to-r from-brand-navy-light to-blue-400 bg-clip-text text-transparent;
+  }
+}
+
+/* ===== LIGHT MODE OVERRIDES ===== */
+/* These override Tailwind's color utilities that use hardcoded dark values */
+
+/*
+ * text-white: Only override in content areas, NOT on brand-colored backgrounds
+ * (buttons, badges, avatars, gradients should keep white text)
+ */
+
+/* Headings & body text that use text-white for dark mode */
+.light h1.text-white,
+.light h2.text-white,
+.light h3.text-white,
+.light p.text-white,
+.light span.text-white,
+.light td.text-white,
+.light th.text-white,
+.light label.text-white,
+.light a.text-white {
+  color: var(--text-primary) !important;
+}
+
+/* Preserve white text on brand-colored surfaces */
+.light .bg-brand-red .text-white,
+.light .bg-brand-red-dark .text-white,
+.light .bg-gradient-to-br .text-white,
+.light .from-brand-red .text-white,
+.light [class*="bg-brand"] .text-white,
+.light [class*="bg-gradient"] .text-white,
+.light .btn-primary,
+.light .btn-secondary {
+  color: #FFFFFF !important;
+}
+
+.light .text-gray-200 {
+  color: var(--text-secondary) !important;
+}
+
+.light .text-gray-300 {
+  color: #475569 !important;
+}
+
+.light .text-gray-400 {
+  color: var(--text-muted) !important;
+}
+
+.light .text-gray-500 {
+  color: #94A3B8 !important;
+}
+
+.light .text-gray-600 {
+  color: #64748B !important;
+}
+
+/* Background colors */
+.light .bg-surface-dark {
+  background-color: var(--surface-dark) !important;
+}
+
+.light .bg-surface-card {
+  background-color: var(--surface-card) !important;
+}
+
+.light .bg-surface-card\/60 {
+  background-color: rgba(255, 255, 255, 0.6) !important;
+}
+
+.light .bg-surface-card\/30 {
+  background-color: rgba(255, 255, 255, 0.3) !important;
+}
+
+.light .bg-surface-card-hover {
+  background-color: var(--surface-card-hover) !important;
+}
+
+/* Border colors */
+.light .border-surface-border {
+  border-color: var(--surface-border) !important;
+}
+
+.light .border-surface-border\/60 {
+  border-color: rgba(226, 232, 240, 0.6) !important;
+}
+
+.light .border-surface-border\/40 {
+  border-color: rgba(226, 232, 240, 0.4) !important;
+}
+
+.light .border-surface-border\/30 {
+  border-color: rgba(226, 232, 240, 0.3) !important;
+}
+
+.light .border-surface-border-light {
+  border-color: var(--surface-border-light) !important;
+}
+
+/* Hover backgrounds */
+.light .hover\:bg-white\/5:hover {
+  background-color: rgba(0, 0, 0, 0.05) !important;
+}
+
+.light .hover\:bg-surface-card-hover\/50:hover {
+  background-color: rgba(241, 245, 249, 0.5) !important;
+}
+
+/* Gradient backgrounds on dark surfaces in light mode */
+.light .bg-gradient-to-br.from-brand-red\/80.to-brand-navy {
+  /* Keep as is - brand gradient is fine */
+}
+
+/* Header */
+.light .bg-surface-dark\/80 {
+  background-color: var(--header-bg) !important;
+}
+
+/* Modal overlay */
+.light .bg-black\/60 {
+  background-color: var(--overlay-bg) !important;
+}
+
+/* Card hover state in light mode */
+.light .hover\:bg-surface-card-hover:hover {
+  background-color: var(--surface-card-hover) !important;
+}
+
+/* Light mode header shadow for definition */
+.light header {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+/* Light mode card shadows */
+.light .glass-card,
+.light .glass-card-hover {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+/* Light mode dropdown shadows */
+.light .shadow-2xl {
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.12) !important;
+}
+
+/* Light mode: ensure notification badge text stays white */
+.light .bg-brand-red span {
+  color: #FFFFFF !important;
+}
+
+/* ===== RECHARTS ===== */
+.recharts-default-tooltip {
+  background-color: var(--tooltip-bg) !important;
+  border: 1px solid var(--tooltip-border) !important;
+  border-radius: 8px !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15) !important;
+}
+
+.recharts-tooltip-label {
+  color: var(--text-secondary) !important;
+  font-weight: 600 !important;
+}
+
+.recharts-tooltip-item {
+  color: var(--text-muted) !important;
+}
+
+/* ===== ANIMATED COUNTER ===== */
+@keyframes counter-slide {
+  from { transform: translateY(100%); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.counter-animate {
+  animation: counter-slide 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* ===== LIGHT MODE SELECT/OPTIONS ===== */
+.light select,
+.light option {
+  background-color: var(--surface-card);
+  color: var(--text-secondary);
+}
+
+/* ===== LIGHT MODE TABLE ROW HOVER ===== */
+.light tr:hover {
+  background-color: rgba(241, 245, 249, 0.5);
+}
+
+/* ===== LIGHT MODE STAT VALUE ===== */
+.light .stat-value {
+  background: linear-gradient(to right, #0F172A, #334155);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* ===== SMOOTH THEME TRANSITION ===== */
+*, *::before, *::after {
+  transition-property: background-color, border-color, color, fill, stroke;
+  transition-duration: 0s;
+}
+
+html.transitioning *, html.transitioning *::before, html.transitioning *::after {
+  transition-duration: 0.3s !important;
+  transition-timing-function: ease !important;
+}
