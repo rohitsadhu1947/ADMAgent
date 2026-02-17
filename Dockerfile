@@ -2,7 +2,7 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install system deps (build tools for cryptography/bcrypt, curl for healthcheck)
+# Install system deps
 RUN apt-get update && apt-get install -y \
     curl \
     gcc \
@@ -17,11 +17,7 @@ RUN pip install --no-cache-dir --upgrade pip && \
 # Copy project files
 COPY backend/ ./backend/
 COPY bot/ ./bot/
-COPY railway_start.sh .
-RUN chmod +x railway_start.sh
 
-# Expose port
-EXPOSE ${PORT:-8000}
-
-# Start
-CMD ["bash", "railway_start.sh"]
+# Start backend directly with uvicorn
+WORKDIR /app/backend
+CMD uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}
