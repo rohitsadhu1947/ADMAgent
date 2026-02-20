@@ -27,7 +27,18 @@ logger = logging.getLogger("adm_platform")
 
 def run_seed_if_empty():
     """Seed reference data (products, admin user, ADM users) if not already present."""
+    import os
     from models import Product, User
+
+    # Force DB reset if RESET_DB env var is set (one-time cleanup)
+    reset_db = os.environ.get("RESET_DB", "").lower() in ("true", "1", "yes")
+    if reset_db:
+        logger.warning("RESET_DB=true detected! Dropping ALL tables and re-creating...")
+        from database import engine, Base
+        Base.metadata.drop_all(bind=engine)
+        Base.metadata.create_all(bind=engine)
+        logger.warning("All tables dropped and re-created.")
+
     db = SessionLocal()
     try:
         count = db.query(Product).count()
