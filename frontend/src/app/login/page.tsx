@@ -169,25 +169,11 @@ export default function LoginPage() {
                 Admin Login
               </button>
               <button
-                onClick={() => quickLogin('rakesh', 'demo123')}
+                onClick={() => quickLogin('rohit', 'rohit123')}
                 disabled={isLoading}
                 className="py-2 px-3 rounded-lg bg-blue-500/5 border border-blue-500/10 text-xs text-blue-400 hover:bg-blue-500/10 hover:border-blue-500/20 transition-all disabled:opacity-50"
               >
-                ADM: Rajiv M.
-              </button>
-              <button
-                onClick={() => quickLogin('priyanka', 'demo123')}
-                disabled={isLoading}
-                className="py-2 px-3 rounded-lg bg-purple-500/5 border border-purple-500/10 text-xs text-purple-400 hover:bg-purple-500/10 hover:border-purple-500/20 transition-all disabled:opacity-50"
-              >
-                ADM: Priyanka K.
-              </button>
-              <button
-                onClick={() => quickLogin('suresh', 'demo123')}
-                disabled={isLoading}
-                className="py-2 px-3 rounded-lg bg-emerald-500/5 border border-emerald-500/10 text-xs text-emerald-400 hover:bg-emerald-500/10 hover:border-emerald-500/20 transition-all disabled:opacity-50"
-              >
-                ADM: Suresh V.
+                ADM: Rohit S.
               </button>
             </div>
           </div>

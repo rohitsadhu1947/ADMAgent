@@ -425,11 +425,41 @@ def seed_database(db: Session):
         logger.info("Created admin user (admin/admin123)")
 
     # ------------------------------------------------------------------
+    # 4. Rohit Sadhu - Primary ADM with web login + Telegram linked
+    # ------------------------------------------------------------------
+    from models import ADM
+    existing_rohit = db.query(User).filter(User.username == "rohit").first()
+    if not existing_rohit:
+        rohit_adm = ADM(
+            name="Rohit Sadhu",
+            phone="7303474258",
+            region="North",
+            language="Hindi,English",
+            max_capacity=50,
+            performance_score=0.0,
+            telegram_chat_id="8321786545",
+        )
+        db.add(rohit_adm)
+        db.flush()
+
+        rohit_user = User(
+            username="rohit",
+            password_hash=_hash_password("rohit123"),
+            role="adm",
+            name="Rohit Sadhu",
+            adm_id=rohit_adm.id,
+        )
+        db.add(rohit_user)
+        db.flush()
+        logger.info("Created ADM: Rohit Sadhu (rohit/rohit123, TG: 8321786545)")
+
+    # ------------------------------------------------------------------
     # Commit
     # ------------------------------------------------------------------
     db.commit()
     logger.info("Database seeding completed!")
     logger.info(f"  Products: {len(products)}")
     logger.info(f"  Reason taxonomy: {len(REASON_TAXONOMY)} entries")
-    logger.info("  Admin user: created")
-    logger.info("  Note: ADMs, agents, and operational data should be added via the app or Telegram bot.")
+    logger.info("  Admin user: admin/admin123")
+    logger.info("  ADM user: rohit/rohit123")
+    logger.info("  Note: Additional ADMs and agents can be added via Telegram bot or web.")

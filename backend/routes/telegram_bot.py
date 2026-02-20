@@ -15,8 +15,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
+import hashlib
+
 from database import get_db
-from models import ADM, Agent, Interaction, Feedback, DiaryEntry, DailyBriefing, TrainingProgress
+from models import ADM, Agent, User, Interaction, Feedback, DiaryEntry, DailyBriefing, TrainingProgress
 from services.ai_service import ai_service
 
 logger = logging.getLogger(__name__)
@@ -131,10 +133,29 @@ def register_adm_from_telegram(data: dict, db: Session = Depends(get_db)):
         performance_score=0.0,
     )
     db.add(adm)
+    db.flush()  # Get adm.id before creating User
+
+    # Also create a web User login so ADM can access the web dashboard
+    # Username = employee_id (lowercase), Password = employee_id (can change later)
+    username = employee_id.lower() if employee_id else f"adm{telegram_id}"
+    # Check if username already exists
+    existing_user = db.query(User).filter(User.username == username).first()
+    if not existing_user:
+        password_hash = hashlib.sha256(employee_id.encode() if employee_id else str(telegram_id).encode()).hexdigest()
+        web_user = User(
+            username=username,
+            password_hash=password_hash,
+            role="adm",
+            name=name,
+            adm_id=adm.id,
+        )
+        db.add(web_user)
+        logger.info(f"Created web login for ADM: username={username}")
+
     db.commit()
     db.refresh(adm)
 
-    # Auto-assign some demo agents to this new ADM so flows work
+    # Auto-assign unassigned agents to this new ADM
     unassigned_agents = db.query(Agent).filter(
         Agent.assigned_adm_id.is_(None)
     ).limit(10).all()
@@ -143,20 +164,13 @@ def register_adm_from_telegram(data: dict, db: Session = Depends(get_db)):
         agent.assigned_adm_id = adm.id
     db.commit()
 
-    # If no unassigned agents available, assign some from other ADMs (share them)
-    if not unassigned_agents:
-        some_agents = db.query(Agent).limit(8).all()
-        for agent in some_agents:
-            if agent.assigned_adm_id != adm.id:
-                agent.assigned_adm_id = adm.id
-        db.commit()
-
     return {
         "id": adm.id,
         "name": adm.name,
         "region": adm.region,
         "telegram_chat_id": adm.telegram_chat_id,
-        "message": "Registration successful",
+        "web_username": username,
+        "message": "Registration successful. You can also login to the web dashboard.",
     }
 
 

@@ -176,11 +176,12 @@ async def confirm_registration(update: Update, context: ContextTypes.DEFAULT_TYP
     )
 
     if result.get("error"):
-        logger.warning("Registration API failed (demo mode): %s", result)
-        # Still show success for demo - user can use all features with demo data
+        logger.warning("Registration API failed: %s", result)
+
+    web_username = result.get("web_username", emp_id.lower() if emp_id else "")
 
     await query.edit_message_text(
-        registration_success(name),
+        registration_success(name, web_username=web_username, employee_id=emp_id),
         parse_mode="HTML",
         reply_markup=main_menu_keyboard(),
     )

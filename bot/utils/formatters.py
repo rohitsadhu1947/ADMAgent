@@ -142,13 +142,23 @@ def welcome_message() -> str:
     )
 
 
-def registration_success(name: str) -> str:
+def registration_success(name: str, web_username: str = "", employee_id: str = "") -> str:
     """Registration success message."""
+    web_info = ""
+    if web_username:
+        password_hint = employee_id if employee_id else "your Telegram ID"
+        web_info = (
+            f"\n{header('Web Dashboard Login', E_GEAR)}\n\n"
+            f"  {E_PERSON} Username: <b>{web_username}</b>\n"
+            f"  {E_STAR} Password: <b>{password_hint}</b>\n"
+            f"  (You can change this later)\n\n"
+        )
     return (
         f"{E_CHECK} <b>Registration Successful!</b>\n\n"
         f"Welcome aboard, <b>{name}</b>! {E_CLAP}\n\n"
         f"Aapka ADM Platform account ready hai.\n"
-        f"(Your ADM Platform account is ready.)\n\n"
+        f"(Your ADM Platform account is ready.)\n"
+        f"{web_info}"
         f"{header('Quick Start', E_STAR)}\n\n"
         f"  /briefing  - {E_SUNRISE} Morning briefing\n"
         f"  /agents    - {E_PEOPLE} Your agents list\n"

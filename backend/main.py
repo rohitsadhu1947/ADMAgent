@@ -26,8 +26,8 @@ logger = logging.getLogger("adm_platform")
 
 
 def run_seed_if_empty():
-    """Seed reference data (products, admin user) if not already present."""
-    from models import Product
+    """Seed reference data (products, admin user, ADM users) if not already present."""
+    from models import Product, User
     db = SessionLocal()
     try:
         count = db.query(Product).count()
@@ -37,12 +37,44 @@ def run_seed_if_empty():
             seed_database(db)
             logger.info("Reference data seeded successfully.")
         else:
-            logger.info(f"Database has {count} products. Skipping seed.")
+            logger.info(f"Database has {count} products. Skipping full seed.")
+            # Still ensure key users exist even if products were already seeded
+            _ensure_key_users(db)
     except Exception as e:
         logger.error(f"Error during seeding: {e}")
         db.rollback()
     finally:
         db.close()
+
+
+def _ensure_key_users(db):
+    """Ensure admin and key ADM users exist in the database."""
+    import hashlib
+    from models import User, ADM
+
+    def _hash(pw: str) -> str:
+        return hashlib.sha256(pw.encode()).hexdigest()
+
+    # Admin user
+    if not db.query(User).filter(User.username == "admin").first():
+        db.add(User(username="admin", password_hash=_hash("admin123"), role="admin", name="Platform Admin"))
+        db.flush()
+        logger.info("Created missing admin user (admin/admin123)")
+
+    # Rohit Sadhu ADM
+    if not db.query(User).filter(User.username == "rohit").first():
+        rohit_adm = db.query(ADM).filter(ADM.telegram_chat_id == "8321786545").first()
+        if not rohit_adm:
+            rohit_adm = ADM(
+                name="Rohit Sadhu", phone="7303474258", region="North",
+                language="Hindi,English", max_capacity=50, performance_score=0.0,
+                telegram_chat_id="8321786545",
+            )
+            db.add(rohit_adm)
+            db.flush()
+        db.add(User(username="rohit", password_hash=_hash("rohit123"), role="adm", name="Rohit Sadhu", adm_id=rohit_adm.id))
+        db.commit()
+        logger.info("Created missing ADM user: Rohit Sadhu (rohit/rohit123)")
 
 
 @asynccontextmanager
