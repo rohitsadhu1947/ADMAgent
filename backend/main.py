@@ -116,6 +116,7 @@ from routes import (
     onboarding_router,
     playbooks_router,
     communication_router,
+    feedback_tickets_router,
 )
 
 API_PREFIX = "/api/v1"
@@ -136,6 +137,7 @@ all_routers = [
     onboarding_router,
     playbooks_router,
     communication_router,
+    feedback_tickets_router,
 ]
 
 # Mount all routers under /api/v1 (primary)

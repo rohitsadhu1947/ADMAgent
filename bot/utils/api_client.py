@@ -206,6 +206,32 @@ class APIClient:
             "question": question,
         })
 
+    # ------------------------------------------------------------------
+    # Feedback Ticket endpoints (new workflow)
+    # ------------------------------------------------------------------
+
+    async def get_reason_taxonomy(self) -> dict:
+        """Get feedback reason taxonomy by bucket (for pick-and-choose UI)."""
+        return await self.get("/feedback-tickets/reasons/by-bucket")
+
+    async def submit_feedback_ticket(self, data: dict) -> dict:
+        """Submit a feedback ticket through the new workflow."""
+        return await self.post("/feedback-tickets/submit", data=data)
+
+    async def get_feedback_tickets(self, adm_id: int = None) -> dict:
+        """Get feedback tickets for an ADM."""
+        params = {}
+        if adm_id:
+            params["adm_id"] = adm_id
+        return await self.get("/feedback-tickets/", params=params)
+
+    async def rate_script(self, ticket_id: str, rating: str, feedback: str = "") -> dict:
+        """Rate a generated communication script."""
+        return await self.post(f"/feedback-tickets/{ticket_id}/rate-script", data={
+            "rating": rating,
+            "feedback": feedback,
+        })
+
 
 # Module-level singleton
 api_client = APIClient()

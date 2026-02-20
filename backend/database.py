@@ -42,5 +42,6 @@ def init_db():
         Agent, ADM, Interaction, Feedback,
         TrainingProgress, DiaryEntry, DailyBriefing,
         User, Product,
+        ReasonTaxonomy, FeedbackTicket, DepartmentQueue, AggregationAlert,
     )
     Base.metadata.create_all(bind=engine)

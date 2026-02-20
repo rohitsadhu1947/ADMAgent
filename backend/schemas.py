@@ -505,3 +505,112 @@ class OnboardingAgentResponse(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+# ==================== Feedback Ticket Schemas ====================
+
+class FeedbackTicketSubmit(BaseModel):
+    """ADM submits feedback — either selected reasons, free text, or both."""
+    agent_id: int
+    adm_id: int
+    interaction_id: Optional[int] = None
+    channel: str = "telegram"  # telegram | whatsapp | web
+    selected_reason_codes: Optional[List[str]] = None  # e.g., ["UW-01", "FIN-03"]
+    raw_feedback_text: Optional[str] = None  # free-text from ADM
+
+
+class FeedbackTicketResponse(BaseModel):
+    id: int
+    ticket_id: str
+    agent_id: int
+    adm_id: int
+    interaction_id: Optional[int] = None
+    channel: str
+    selected_reasons: Optional[str] = None
+    raw_feedback_text: Optional[str] = None
+    parsed_summary: Optional[str] = None
+    bucket: str
+    reason_code: Optional[str] = None
+    secondary_reason_codes: Optional[str] = None
+    ai_confidence: Optional[float] = None
+    priority: str
+    urgency_score: Optional[float] = None
+    churn_risk: Optional[str] = None
+    sentiment: Optional[str] = None
+    sla_hours: int
+    sla_deadline: Optional[datetime] = None
+    status: str
+    department_response_text: Optional[str] = None
+    department_responded_by: Optional[str] = None
+    department_responded_at: Optional[datetime] = None
+    generated_script: Optional[str] = None
+    script_sent_at: Optional[datetime] = None
+    adm_script_rating: Optional[str] = None
+    parent_ticket_id: Optional[str] = None
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+    # Enriched fields
+    agent_name: Optional[str] = None
+    adm_name: Optional[str] = None
+    bucket_display: Optional[str] = None
+    reason_display: Optional[str] = None
+    sla_status: Optional[str] = None
+
+    model_config = {"from_attributes": True}
+
+
+class DepartmentResponseSubmit(BaseModel):
+    """Department team responds to a feedback ticket."""
+    response_text: str
+    responded_by: str  # name or email of dept person
+
+
+class ScriptRating(BaseModel):
+    """ADM rates the generated script."""
+    rating: str  # helpful | not_helpful
+    feedback: Optional[str] = None
+
+
+class ReasonTaxonomyResponse(BaseModel):
+    id: int
+    code: str
+    bucket: str
+    reason_name: str
+    description: Optional[str] = None
+    sub_reasons: Optional[str] = None
+    typical_sla_hours: int
+    display_order: int
+    active: bool
+
+    model_config = {"from_attributes": True}
+
+
+class DepartmentQueueResponse(BaseModel):
+    id: int
+    department: str
+    ticket_id: int
+    assigned_to: Optional[str] = None
+    status: str
+    sla_status: str
+    escalation_level: int
+    notes: Optional[str] = None
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+    model_config = {"from_attributes": True}
+
+
+class AggregationAlertResponse(BaseModel):
+    id: int
+    pattern_type: str
+    description: str
+    affected_agents_count: int
+    affected_adms_count: int
+    region: Optional[str] = None
+    bucket: Optional[str] = None
+    reason_code: Optional[str] = None
+    auto_escalated: bool
+    status: str
+    created_at: datetime
+
+    model_config = {"from_attributes": True}

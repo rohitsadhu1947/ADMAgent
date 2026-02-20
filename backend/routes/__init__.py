@@ -18,6 +18,7 @@ from routes.products import router as products_router
 from routes.onboarding import router as onboarding_router
 from routes.playbooks import router as playbooks_router
 from routes.communication import router as communication_router
+from routes.feedback_tickets import router as feedback_tickets_router
 
 __all__ = [
     "agents_router",
@@ -35,4 +36,5 @@ __all__ = [
     "onboarding_router",
     "playbooks_router",
     "communication_router",
+    "feedback_tickets_router",
 ]

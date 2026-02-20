@@ -256,6 +256,139 @@ class User(Base):
 # ---------------------------------------------------------------------------
 # Product
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Reason Taxonomy (reference data for feedback classification)
+# ---------------------------------------------------------------------------
+class ReasonTaxonomy(Base):
+    __tablename__ = "reason_taxonomy"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    code = Column(String(10), nullable=False, unique=True, index=True)  # UW-01, FIN-03, etc.
+    bucket = Column(String(30), nullable=False, index=True)  # underwriting | finance | contest | operations | product
+    reason_name = Column(String(200), nullable=False)
+    description = Column(Text, nullable=True)
+    sub_reasons = Column(Text, nullable=True)  # JSON list of sub-reason variants
+    keywords = Column(Text, nullable=True)  # JSON list of keywords for AI matching
+    suggested_data_points = Column(Text, nullable=True)  # JSON list of data to pull
+    typical_sla_hours = Column(Integer, default=48)
+    display_order = Column(Integer, default=0)  # for UI ordering within bucket
+    active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+# ---------------------------------------------------------------------------
+# Feedback Ticket (the core workflow entity)
+# ---------------------------------------------------------------------------
+class FeedbackTicket(Base):
+    __tablename__ = "feedback_tickets"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    ticket_id = Column(String(20), nullable=False, unique=True, index=True)  # FB-YYYY-NNNNN
+
+    agent_id = Column(Integer, ForeignKey("agents.id"), nullable=False, index=True)
+    adm_id = Column(Integer, ForeignKey("adms.id"), nullable=False, index=True)
+    interaction_id = Column(Integer, ForeignKey("interactions.id"), nullable=True)
+
+    channel = Column(String(20), nullable=False, default="telegram")  # telegram | whatsapp | web
+
+    # Feedback input
+    selected_reasons = Column(Text, nullable=True)  # JSON list of reason codes picked by ADM
+    raw_feedback_text = Column(Text, nullable=True)  # free-text from ADM
+    parsed_summary = Column(Text, nullable=True)  # AI-generated summary
+
+    # AI classification
+    bucket = Column(String(30), nullable=False, index=True)  # underwriting | finance | contest | operations | product
+    reason_code = Column(String(10), nullable=True, index=True)  # primary reason code
+    secondary_reason_codes = Column(Text, nullable=True)  # JSON list of secondary codes
+    ai_confidence = Column(Float, nullable=True)  # 0.0-1.0
+
+    # Priority & risk
+    priority = Column(String(20), default="medium", index=True)  # low | medium | high | critical
+    urgency_score = Column(Float, default=5.0)  # 0-10
+    churn_risk = Column(String(20), nullable=True)  # high | medium | low
+    sentiment = Column(String(30), nullable=True)  # frustrated | neutral | positive
+
+    # SLA
+    sla_hours = Column(Integer, default=48)
+    sla_deadline = Column(DateTime, nullable=True)
+
+    # Status tracking
+    status = Column(
+        String(30), default="received", index=True,
+    )  # received | classified | routed | pending_dept | responded | script_generated | script_sent | closed
+
+    # Department response
+    department_response_text = Column(Text, nullable=True)
+    department_responded_by = Column(String(200), nullable=True)
+    department_responded_at = Column(DateTime, nullable=True)
+
+    # AI-generated script
+    generated_script = Column(Text, nullable=True)
+    script_sent_at = Column(DateTime, nullable=True)
+
+    # ADM feedback on the script
+    adm_script_rating = Column(String(20), nullable=True)  # helpful | not_helpful
+    adm_script_feedback = Column(Text, nullable=True)
+
+    # Related tickets (for multi-bucket or repeat cases)
+    related_ticket_ids = Column(Text, nullable=True)  # JSON list of ticket IDs
+    parent_ticket_id = Column(String(20), nullable=True)  # if this is a split ticket
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    agent = relationship("Agent")
+    adm = relationship("ADM")
+    interaction = relationship("Interaction")
+    queue_entry = relationship("DepartmentQueue", back_populates="ticket", uselist=False)
+
+
+# ---------------------------------------------------------------------------
+# Department Queue (tracks ticket assignment within departments)
+# ---------------------------------------------------------------------------
+class DepartmentQueue(Base):
+    __tablename__ = "department_queue"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    department = Column(String(30), nullable=False, index=True)  # underwriting | finance | contest | operations | product
+    ticket_id = Column(Integer, ForeignKey("feedback_tickets.id"), nullable=False, index=True)
+    assigned_to = Column(String(200), nullable=True)  # department user name/email
+    status = Column(String(30), default="open", index=True)  # open | in_progress | responded | escalated
+    sla_status = Column(String(20), default="on_track")  # on_track | warning | breached
+    escalation_level = Column(Integer, default=0)  # 0=none, 1=dept head, 2=CXO
+
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    ticket = relationship("FeedbackTicket", back_populates="queue_entry")
+
+
+# ---------------------------------------------------------------------------
+# Aggregation Alert (pattern detection across feedbacks)
+# ---------------------------------------------------------------------------
+class AggregationAlert(Base):
+    __tablename__ = "aggregation_alerts"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    pattern_type = Column(String(30), nullable=False)  # district | reason | bucket
+    description = Column(Text, nullable=False)
+    affected_agents_count = Column(Integer, default=0)
+    affected_adms_count = Column(Integer, default=0)
+    region = Column(String(200), nullable=True)
+    bucket = Column(String(30), nullable=True)
+    reason_code = Column(String(10), nullable=True)
+    ticket_ids = Column(Text, nullable=True)  # JSON list of feedback_ticket IDs
+    auto_escalated = Column(Boolean, default=False)
+    status = Column(String(30), default="active")  # active | reviewed | resolved
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+# ---------------------------------------------------------------------------
+# Product
+# ---------------------------------------------------------------------------
 class Product(Base):
     __tablename__ = "products"
 

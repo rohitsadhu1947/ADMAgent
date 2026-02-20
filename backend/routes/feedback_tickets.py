@@ -1,0 +1,620 @@
+"""
+Feedback Ticket routes — the core workflow API.
+
+Handles ticket submission, classification, department response,
+script generation, and delivery.
+"""
+
+import json
+import logging
+from datetime import datetime
+from typing import Optional, List
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy.orm import Session
+from sqlalchemy import func, desc
+
+from database import get_db
+from models import (
+    FeedbackTicket, DepartmentQueue, ReasonTaxonomy,
+    AggregationAlert, Agent, ADM,
+)
+from schemas import (
+    FeedbackTicketSubmit, FeedbackTicketResponse,
+    DepartmentResponseSubmit, ScriptRating,
+    ReasonTaxonomyResponse, DepartmentQueueResponse,
+    AggregationAlertResponse,
+)
+from services.feedback_classifier import feedback_classifier, BUCKET_DISPLAY_NAMES
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/feedback-tickets", tags=["Feedback Tickets"])
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _generate_ticket_id(db: Session) -> str:
+    """Generate next ticket ID: FB-YYYY-NNNNN."""
+    year = datetime.utcnow().year
+    prefix = f"FB-{year}-"
+    last = (
+        db.query(FeedbackTicket)
+        .filter(FeedbackTicket.ticket_id.like(f"{prefix}%"))
+        .order_by(desc(FeedbackTicket.id))
+        .first()
+    )
+    if last:
+        last_num = int(last.ticket_id.split("-")[-1])
+        next_num = last_num + 1
+    else:
+        next_num = 1
+    return f"{prefix}{next_num:05d}"
+
+
+def _enrich_ticket(ticket: FeedbackTicket, db: Session) -> dict:
+    """Add display names and computed fields to a ticket."""
+    agent = db.query(Agent).filter(Agent.id == ticket.agent_id).first()
+    adm = db.query(ADM).filter(ADM.id == ticket.adm_id).first()
+
+    # Reason display name
+    reason_display = None
+    if ticket.reason_code:
+        reason = db.query(ReasonTaxonomy).filter(
+            ReasonTaxonomy.code == ticket.reason_code
+        ).first()
+        reason_display = reason.reason_name if reason else ticket.reason_code
+
+    # SLA status
+    sla_status = "on_track"
+    if ticket.sla_deadline:
+        now = datetime.utcnow()
+        if ticket.status in ("responded", "script_generated", "script_sent", "closed"):
+            sla_status = "completed"
+        elif now > ticket.sla_deadline:
+            sla_status = "breached"
+        elif now > ticket.sla_deadline - (ticket.sla_deadline - ticket.created_at) * 0.25:
+            sla_status = "warning"
+
+    # Build response dict from ORM object
+    data = {
+        "id": ticket.id,
+        "ticket_id": ticket.ticket_id,
+        "agent_id": ticket.agent_id,
+        "adm_id": ticket.adm_id,
+        "interaction_id": ticket.interaction_id,
+        "channel": ticket.channel,
+        "selected_reasons": ticket.selected_reasons,
+        "raw_feedback_text": ticket.raw_feedback_text,
+        "parsed_summary": ticket.parsed_summary,
+        "bucket": ticket.bucket,
+        "reason_code": ticket.reason_code,
+        "secondary_reason_codes": ticket.secondary_reason_codes,
+        "ai_confidence": ticket.ai_confidence,
+        "priority": ticket.priority,
+        "urgency_score": ticket.urgency_score,
+        "churn_risk": ticket.churn_risk,
+        "sentiment": ticket.sentiment,
+        "sla_hours": ticket.sla_hours,
+        "sla_deadline": ticket.sla_deadline,
+        "status": ticket.status,
+        "department_response_text": ticket.department_response_text,
+        "department_responded_by": ticket.department_responded_by,
+        "department_responded_at": ticket.department_responded_at,
+        "generated_script": ticket.generated_script,
+        "script_sent_at": ticket.script_sent_at,
+        "adm_script_rating": ticket.adm_script_rating,
+        "parent_ticket_id": ticket.parent_ticket_id,
+        "created_at": ticket.created_at,
+        "updated_at": ticket.updated_at,
+        # Enriched
+        "agent_name": agent.name if agent else None,
+        "adm_name": adm.name if adm else None,
+        "bucket_display": BUCKET_DISPLAY_NAMES.get(ticket.bucket, ticket.bucket),
+        "reason_display": reason_display,
+        "sla_status": sla_status,
+    }
+    return data
+
+
+# ---------------------------------------------------------------------------
+# Reason Taxonomy endpoints (for ADM UI — pick-and-choose reasons)
+# ---------------------------------------------------------------------------
+
+@router.get("/reasons", response_model=List[ReasonTaxonomyResponse])
+def list_reasons(
+    bucket: Optional[str] = Query(None, description="Filter by bucket"),
+    db: Session = Depends(get_db),
+):
+    """List all active feedback reasons, grouped by bucket. Used by ADM UI for pick-and-choose."""
+    query = db.query(ReasonTaxonomy).filter(ReasonTaxonomy.active == True)
+    if bucket:
+        query = query.filter(ReasonTaxonomy.bucket == bucket)
+    return query.order_by(ReasonTaxonomy.bucket, ReasonTaxonomy.display_order).all()
+
+
+@router.get("/reasons/by-bucket")
+def reasons_by_bucket(db: Session = Depends(get_db)):
+    """Get reasons organized by bucket for UI rendering."""
+    reasons = (
+        db.query(ReasonTaxonomy)
+        .filter(ReasonTaxonomy.active == True)
+        .order_by(ReasonTaxonomy.bucket, ReasonTaxonomy.display_order)
+        .all()
+    )
+    result = {}
+    for r in reasons:
+        bucket = r.bucket
+        if bucket not in result:
+            result[bucket] = {
+                "bucket": bucket,
+                "display_name": BUCKET_DISPLAY_NAMES.get(bucket, bucket),
+                "reasons": [],
+            }
+        result[bucket]["reasons"].append({
+            "code": r.code,
+            "reason_name": r.reason_name,
+            "description": r.description,
+            "sub_reasons": json.loads(r.sub_reasons) if r.sub_reasons else [],
+        })
+    return list(result.values())
+
+
+# ---------------------------------------------------------------------------
+# Ticket submission (ADM submits feedback)
+# ---------------------------------------------------------------------------
+
+@router.post("/submit", status_code=201)
+async def submit_feedback_ticket(
+    data: FeedbackTicketSubmit,
+    db: Session = Depends(get_db),
+):
+    """
+    ADM submits agent feedback. AI classifies it and routes to department.
+
+    ADM can:
+    1. Pick one or more reason codes (selected_reason_codes)
+    2. Provide free text (raw_feedback_text)
+    3. Both — reasons + additional context
+    """
+    # Validate agent and ADM
+    agent = db.query(Agent).filter(Agent.id == data.agent_id).first()
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    adm = db.query(ADM).filter(ADM.id == data.adm_id).first()
+    if not adm:
+        raise HTTPException(status_code=404, detail="ADM not found")
+
+    if not data.selected_reason_codes and not data.raw_feedback_text:
+        raise HTTPException(
+            status_code=400,
+            detail="Provide at least one reason code or feedback text",
+        )
+
+    # Classify
+    classification = await feedback_classifier.classify_feedback(
+        raw_text=data.raw_feedback_text or "",
+        selected_reason_codes=data.selected_reason_codes,
+        agent_name=agent.name,
+        agent_location=agent.location,
+        agent_state=agent.lifecycle_state,
+    )
+
+    # Check for multi-bucket — split into separate tickets
+    tickets_created = []
+    buckets_to_process = [classification["bucket"]]
+    if classification.get("multi_bucket") and classification.get("additional_buckets"):
+        buckets_to_process.extend(classification["additional_buckets"])
+
+    parent_ticket_id = None
+
+    for idx, bucket in enumerate(buckets_to_process):
+        ticket_id = _generate_ticket_id(db)
+        sla_hours = feedback_classifier.get_sla_hours(bucket, classification["priority"])
+        sla_deadline = feedback_classifier.compute_sla_deadline(bucket, classification["priority"])
+
+        # For split tickets, filter reason codes to this bucket
+        bucket_codes = []
+        if data.selected_reason_codes:
+            for code in data.selected_reason_codes:
+                if feedback_classifier._bucket_from_code(code) == bucket:
+                    bucket_codes.append(code)
+
+        ticket = FeedbackTicket(
+            ticket_id=ticket_id,
+            agent_id=data.agent_id,
+            adm_id=data.adm_id,
+            interaction_id=data.interaction_id,
+            channel=data.channel,
+            selected_reasons=json.dumps(bucket_codes) if bucket_codes else (
+                json.dumps(data.selected_reason_codes) if idx == 0 and data.selected_reason_codes else None
+            ),
+            raw_feedback_text=data.raw_feedback_text,
+            parsed_summary=classification.get("parsed_summary"),
+            bucket=bucket,
+            reason_code=bucket_codes[0] if bucket_codes else classification.get("reason_code"),
+            secondary_reason_codes=json.dumps(
+                bucket_codes[1:] if len(bucket_codes) > 1 else classification.get("secondary_reason_codes", [])
+            ),
+            ai_confidence=classification.get("confidence"),
+            priority=classification.get("priority", "medium"),
+            urgency_score=classification.get("urgency_score", 5.0),
+            churn_risk=classification.get("churn_risk"),
+            sentiment=classification.get("sentiment"),
+            sla_hours=sla_hours,
+            sla_deadline=sla_deadline,
+            status="routed",
+            parent_ticket_id=parent_ticket_id,
+        )
+        db.add(ticket)
+        db.flush()
+
+        if idx == 0:
+            parent_ticket_id = ticket.ticket_id
+
+        # Create department queue entry
+        queue_entry = DepartmentQueue(
+            department=bucket,
+            ticket_id=ticket.id,
+            status="open",
+            sla_status="on_track",
+        )
+        db.add(queue_entry)
+
+        tickets_created.append(ticket)
+
+    # Link related tickets if multi-bucket
+    if len(tickets_created) > 1:
+        all_ids = [t.ticket_id for t in tickets_created]
+        for t in tickets_created:
+            t.related_ticket_ids = json.dumps([tid for tid in all_ids if tid != t.ticket_id])
+
+    db.commit()
+
+    # Return enriched responses
+    result = []
+    for t in tickets_created:
+        db.refresh(t)
+        result.append(_enrich_ticket(t, db))
+
+    # Check for aggregation patterns (async-safe, runs after commit)
+    _check_aggregation_patterns(db, tickets_created[0])
+
+    return {
+        "tickets": result,
+        "message": f"Feedback routed to {', '.join(BUCKET_DISPLAY_NAMES.get(b, b) for b in buckets_to_process)}",
+        "sla_info": {b: f"{feedback_classifier.get_sla_hours(b, classification['priority'])} hours"
+                     for b in buckets_to_process},
+    }
+
+
+# ---------------------------------------------------------------------------
+# List / filter tickets
+# ---------------------------------------------------------------------------
+
+@router.get("/", response_model=None)
+def list_tickets(
+    adm_id: Optional[int] = Query(None),
+    agent_id: Optional[int] = Query(None),
+    bucket: Optional[str] = Query(None),
+    status: Optional[str] = Query(None),
+    priority: Optional[str] = Query(None),
+    department: Optional[str] = Query(None, description="Filter by department queue"),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
+    db: Session = Depends(get_db),
+):
+    """List feedback tickets with filters. Used by ADM view and department dashboard."""
+    query = db.query(FeedbackTicket)
+
+    if adm_id:
+        query = query.filter(FeedbackTicket.adm_id == adm_id)
+    if agent_id:
+        query = query.filter(FeedbackTicket.agent_id == agent_id)
+    if bucket:
+        query = query.filter(FeedbackTicket.bucket == bucket)
+    if status:
+        query = query.filter(FeedbackTicket.status == status)
+    if priority:
+        query = query.filter(FeedbackTicket.priority == priority)
+    if department:
+        query = query.join(DepartmentQueue).filter(DepartmentQueue.department == department)
+
+    total = query.count()
+    tickets = query.order_by(desc(FeedbackTicket.created_at)).offset(skip).limit(limit).all()
+
+    return {
+        "tickets": [_enrich_ticket(t, db) for t in tickets],
+        "total": total,
+        "skip": skip,
+        "limit": limit,
+    }
+
+
+@router.get("/{ticket_id}")
+def get_ticket(ticket_id: str, db: Session = Depends(get_db)):
+    """Get a single ticket by ticket_id (e.g., FB-2026-00001)."""
+    ticket = db.query(FeedbackTicket).filter(
+        FeedbackTicket.ticket_id == ticket_id
+    ).first()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    return _enrich_ticket(ticket, db)
+
+
+# ---------------------------------------------------------------------------
+# Department response
+# ---------------------------------------------------------------------------
+
+@router.post("/{ticket_id}/respond")
+async def department_respond(
+    ticket_id: str,
+    data: DepartmentResponseSubmit,
+    db: Session = Depends(get_db),
+):
+    """Department responds to a feedback ticket. Triggers AI script generation."""
+    ticket = db.query(FeedbackTicket).filter(
+        FeedbackTicket.ticket_id == ticket_id
+    ).first()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+
+    if ticket.status in ("script_sent", "closed"):
+        raise HTTPException(status_code=400, detail="Ticket already resolved")
+
+    # Save department response
+    ticket.department_response_text = data.response_text
+    ticket.department_responded_by = data.responded_by
+    ticket.department_responded_at = datetime.utcnow()
+    ticket.status = "responded"
+
+    # Update queue entry
+    queue = db.query(DepartmentQueue).filter(
+        DepartmentQueue.ticket_id == ticket.id
+    ).first()
+    if queue:
+        queue.status = "responded"
+        now = datetime.utcnow()
+        if ticket.sla_deadline and now > ticket.sla_deadline:
+            queue.sla_status = "breached"
+        else:
+            queue.sla_status = "on_track"
+
+    db.commit()
+
+    # Generate communication script
+    agent = db.query(Agent).filter(Agent.id == ticket.agent_id).first()
+    script = await feedback_classifier.generate_script(
+        agent_name=agent.name if agent else "Agent",
+        original_feedback=ticket.raw_feedback_text or ticket.parsed_summary or "",
+        reason_code=ticket.reason_code or "",
+        bucket=ticket.bucket,
+        department_response=data.response_text,
+        agent_location=agent.location if agent else "",
+    )
+
+    ticket.generated_script = script
+    ticket.status = "script_generated"
+    db.commit()
+    db.refresh(ticket)
+
+    return {
+        "ticket": _enrich_ticket(ticket, db),
+        "script": script,
+        "message": "Response recorded and communication script generated",
+    }
+
+
+# ---------------------------------------------------------------------------
+# Mark script as sent (called after bot delivers to ADM)
+# ---------------------------------------------------------------------------
+
+@router.post("/{ticket_id}/script-sent")
+def mark_script_sent(ticket_id: str, db: Session = Depends(get_db)):
+    """Mark that the script has been delivered to the ADM."""
+    ticket = db.query(FeedbackTicket).filter(
+        FeedbackTicket.ticket_id == ticket_id
+    ).first()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+
+    ticket.script_sent_at = datetime.utcnow()
+    ticket.status = "script_sent"
+    db.commit()
+    return {"status": "ok", "ticket_id": ticket_id}
+
+
+# ---------------------------------------------------------------------------
+# ADM rates the script
+# ---------------------------------------------------------------------------
+
+@router.post("/{ticket_id}/rate-script")
+def rate_script(
+    ticket_id: str,
+    data: ScriptRating,
+    db: Session = Depends(get_db),
+):
+    """ADM rates the generated communication script."""
+    ticket = db.query(FeedbackTicket).filter(
+        FeedbackTicket.ticket_id == ticket_id
+    ).first()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+
+    ticket.adm_script_rating = data.rating
+    ticket.adm_script_feedback = data.feedback
+    if data.rating == "helpful":
+        ticket.status = "closed"
+    db.commit()
+    return {"status": "ok", "ticket_id": ticket_id}
+
+
+# ---------------------------------------------------------------------------
+# Department queue view
+# ---------------------------------------------------------------------------
+
+@router.get("/queue/{department}")
+def department_queue(
+    department: str,
+    status: Optional[str] = Query(None),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
+    db: Session = Depends(get_db),
+):
+    """Get department's ticket queue with SLA status."""
+    query = db.query(DepartmentQueue).filter(DepartmentQueue.department == department)
+    if status:
+        query = query.filter(DepartmentQueue.status == status)
+
+    total = query.count()
+    entries = query.order_by(DepartmentQueue.created_at.desc()).offset(skip).limit(limit).all()
+
+    result = []
+    for entry in entries:
+        ticket = db.query(FeedbackTicket).filter(FeedbackTicket.id == entry.ticket_id).first()
+        if ticket:
+            enriched = _enrich_ticket(ticket, db)
+            enriched["queue_status"] = entry.status
+            enriched["queue_sla_status"] = entry.sla_status
+            enriched["escalation_level"] = entry.escalation_level
+            enriched["assigned_to"] = entry.assigned_to
+            result.append(enriched)
+
+    return {"tickets": result, "total": total, "department": department}
+
+
+# ---------------------------------------------------------------------------
+# Analytics
+# ---------------------------------------------------------------------------
+
+@router.get("/analytics/summary")
+def ticket_analytics(
+    adm_id: Optional[int] = None,
+    db: Session = Depends(get_db),
+):
+    """Get feedback ticket analytics."""
+    base = db.query(FeedbackTicket)
+    if adm_id:
+        base = base.filter(FeedbackTicket.adm_id == adm_id)
+
+    total = base.count()
+
+    by_bucket = dict(
+        base.with_entities(FeedbackTicket.bucket, func.count(FeedbackTicket.id))
+        .group_by(FeedbackTicket.bucket).all()
+    )
+    by_priority = dict(
+        base.with_entities(FeedbackTicket.priority, func.count(FeedbackTicket.id))
+        .group_by(FeedbackTicket.priority).all()
+    )
+    by_status = dict(
+        base.with_entities(FeedbackTicket.status, func.count(FeedbackTicket.id))
+        .group_by(FeedbackTicket.status).all()
+    )
+
+    # SLA compliance
+    resolved = base.filter(FeedbackTicket.department_responded_at.isnot(None)).all()
+    sla_met = sum(
+        1 for t in resolved
+        if t.sla_deadline and t.department_responded_at and t.department_responded_at <= t.sla_deadline
+    )
+    sla_compliance = round(sla_met / len(resolved) * 100, 1) if resolved else 0.0
+
+    # Avg resolution time
+    avg_hours = None
+    if resolved:
+        total_hours = sum(
+            (t.department_responded_at - t.created_at).total_seconds() / 3600
+            for t in resolved if t.department_responded_at and t.created_at
+        )
+        avg_hours = round(total_hours / len(resolved), 1)
+
+    # Top reason codes
+    top_reasons = (
+        base.with_entities(FeedbackTicket.reason_code, func.count(FeedbackTicket.id).label("cnt"))
+        .filter(FeedbackTicket.reason_code.isnot(None))
+        .group_by(FeedbackTicket.reason_code)
+        .order_by(func.count(FeedbackTicket.id).desc())
+        .limit(10).all()
+    )
+
+    return {
+        "total_tickets": total,
+        "by_bucket": {k: {"count": v, "display": BUCKET_DISPLAY_NAMES.get(k, k)} for k, v in by_bucket.items()},
+        "by_priority": by_priority,
+        "by_status": by_status,
+        "sla_compliance_pct": sla_compliance,
+        "avg_resolution_hours": avg_hours,
+        "top_reason_codes": [{"code": code, "count": cnt} for code, cnt in top_reasons],
+    }
+
+
+# ---------------------------------------------------------------------------
+# Aggregation alerts
+# ---------------------------------------------------------------------------
+
+@router.get("/alerts")
+def list_alerts(
+    status: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+):
+    """List aggregation/pattern alerts."""
+    query = db.query(AggregationAlert)
+    if status:
+        query = query.filter(AggregationAlert.status == status)
+    return query.order_by(desc(AggregationAlert.created_at)).limit(50).all()
+
+
+# ---------------------------------------------------------------------------
+# Pattern detection (internal helper)
+# ---------------------------------------------------------------------------
+
+def _check_aggregation_patterns(db: Session, ticket: FeedbackTicket):
+    """Check if this ticket creates a pattern worth alerting on."""
+    try:
+        # Count similar tickets in last 30 days
+        from datetime import timedelta
+        cutoff = datetime.utcnow() - timedelta(days=30)
+
+        # Same reason code pattern
+        if ticket.reason_code:
+            similar = (
+                db.query(FeedbackTicket)
+                .filter(
+                    FeedbackTicket.reason_code == ticket.reason_code,
+                    FeedbackTicket.created_at >= cutoff,
+                )
+                .all()
+            )
+            if len(similar) >= 5:
+                # Check if alert already exists
+                existing = (
+                    db.query(AggregationAlert)
+                    .filter(
+                        AggregationAlert.reason_code == ticket.reason_code,
+                        AggregationAlert.status == "active",
+                    )
+                    .first()
+                )
+                if not existing:
+                    unique_agents = len({t.agent_id for t in similar})
+                    unique_adms = len({t.adm_id for t in similar})
+                    alert = AggregationAlert(
+                        pattern_type="reason",
+                        description=(
+                            f"Pattern detected: {len(similar)} tickets with reason {ticket.reason_code} "
+                            f"in last 30 days from {unique_agents} agents across {unique_adms} ADMs"
+                        ),
+                        affected_agents_count=unique_agents,
+                        affected_adms_count=unique_adms,
+                        bucket=ticket.bucket,
+                        reason_code=ticket.reason_code,
+                        ticket_ids=json.dumps([t.ticket_id for t in similar]),
+                    )
+                    db.add(alert)
+                    db.commit()
+                    logger.info(f"Aggregation alert created for {ticket.reason_code}")
+    except Exception as e:
+        logger.error(f"Error checking aggregation patterns: {e}")
