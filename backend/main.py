@@ -25,22 +25,50 @@ logging.basicConfig(
 logger = logging.getLogger("adm_platform")
 
 
+def _needs_db_reset(db) -> bool:
+    """Check if the database contains stale demo data that needs to be wiped.
+
+    Detects old demo ADMs (Suresh, Amitava, Rajiv, Priyanka, Meenakshi) that
+    were part of the initial prototype. If any exist, the DB should be reset.
+    Also resets if RESET_DB env var is set.
+    """
+    import os
+    from models import ADM
+
+    # Explicit reset via env var
+    if os.environ.get("RESET_DB", "").lower() in ("true", "1", "yes"):
+        logger.warning("RESET_DB=true env var detected.")
+        return True
+
+    # Detect stale demo ADMs by name fragments
+    stale_names = ["Suresh", "Amitava", "Rajiv", "Priyanka", "Meenakshi"]
+    try:
+        for name_frag in stale_names:
+            if db.query(ADM).filter(ADM.name.contains(name_frag)).first():
+                logger.warning(f"Stale demo ADM detected: '{name_frag}*'. DB needs reset.")
+                return True
+    except Exception:
+        pass  # Table might not exist yet — that's fine
+
+    return False
+
+
 def run_seed_if_empty():
     """Seed reference data (products, admin user, ADM users) if not already present."""
-    import os
     from models import Product, User
-
-    # Force DB reset if RESET_DB env var is set (one-time cleanup)
-    reset_db = os.environ.get("RESET_DB", "").lower() in ("true", "1", "yes")
-    if reset_db:
-        logger.warning("RESET_DB=true detected! Dropping ALL tables and re-creating...")
-        from database import engine, Base
-        Base.metadata.drop_all(bind=engine)
-        Base.metadata.create_all(bind=engine)
-        logger.warning("All tables dropped and re-created.")
 
     db = SessionLocal()
     try:
+        # Check for stale data (old demo ADMs) or explicit RESET_DB flag
+        if _needs_db_reset(db):
+            db.close()  # Close before dropping
+            logger.warning("Dropping ALL tables and re-creating for clean slate...")
+            from database import engine, Base
+            Base.metadata.drop_all(bind=engine)
+            Base.metadata.create_all(bind=engine)
+            logger.warning("All tables dropped and re-created.")
+            db = SessionLocal()  # Reopen after reset
+
         count = db.query(Product).count()
         if count == 0:
             logger.info("No products found. Seeding reference data...")
