@@ -118,29 +118,46 @@ def get_me(current_user: User = Depends(get_current_user)):
     return current_user
 
 
-@router.post("/seed-users")
-def seed_users(db: Session = Depends(get_db)):
-    """Create demo users (for setup). Idempotent."""
-    demo_users = [
-        {"username": "admin", "password": "admin123", "role": "admin", "name": "Platform Admin", "adm_id": None},
-        {"username": "rakesh", "password": "demo123", "role": "adm", "name": "Rajiv Malhotra", "adm_id": 1},
-        {"username": "priyanka", "password": "demo123", "role": "adm", "name": "Priyanka Kapoor", "adm_id": 2},
-        {"username": "suresh", "password": "demo123", "role": "adm", "name": "Suresh Venkataraman", "adm_id": 3},
-    ]
+@router.post("/register-adm")
+def register_adm(request: dict, db: Session = Depends(get_db)):
+    """Register a new ADM user. Creates both ADM record and login credentials."""
+    from models import ADM
 
-    created = 0
-    for u in demo_users:
-        existing = db.query(User).filter(User.username == u["username"]).first()
-        if not existing:
-            user = User(
-                username=u["username"],
-                password_hash=get_password_hash(u["password"]),
-                role=u["role"],
-                name=u["name"],
-                adm_id=u["adm_id"],
-            )
-            db.add(user)
-            created += 1
+    required = ["name", "phone", "username", "password"]
+    for field in required:
+        if not request.get(field):
+            raise HTTPException(status_code=400, detail=f"Field '{field}' is required")
 
+    # Check username not taken
+    if db.query(User).filter(User.username == request["username"]).first():
+        raise HTTPException(status_code=400, detail="Username already exists")
+
+    # Create ADM record
+    adm = ADM(
+        name=request["name"],
+        phone=request["phone"],
+        email=request.get("email", ""),
+        region=request.get("region", ""),
+        language=request.get("language", "Hindi,English"),
+        max_capacity=request.get("max_capacity", 50),
+        telegram_chat_id=request.get("telegram_chat_id"),
+    )
+    db.add(adm)
+    db.flush()
+
+    # Create user login
+    user = User(
+        username=request["username"],
+        password_hash=get_password_hash(request["password"]),
+        role="adm",
+        name=request["name"],
+        adm_id=adm.id,
+    )
+    db.add(user)
     db.commit()
-    return {"message": f"Created {created} users", "total_users": db.query(User).count()}
+
+    return {
+        "message": f"ADM '{request['name']}' registered successfully",
+        "adm_id": adm.id,
+        "username": request["username"],
+    }

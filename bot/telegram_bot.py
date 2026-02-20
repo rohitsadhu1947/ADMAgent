@@ -80,31 +80,22 @@ async def agents_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     """Handle /agents command - list assigned agents."""
     telegram_id = update.effective_user.id
 
-    demo_agents = [
-        {"name": "Suresh Patel", "agent_code": "AGT001", "status": "inactive", "last_active": "30 days ago"},
-        {"name": "Priya Sharma", "agent_code": "AGT002", "status": "at_risk", "last_active": "5 days ago"},
-        {"name": "Amit Kumar", "agent_code": "AGT003", "status": "active", "last_active": "Today"},
-        {"name": "Neeta Desai", "agent_code": "AGT004", "status": "active", "last_active": "Yesterday"},
-        {"name": "Rajesh Verma", "agent_code": "AGT005", "status": "inactive", "last_active": "45 days ago"},
-        {"name": "Kavita Singh", "agent_code": "AGT006", "status": "at_risk", "last_active": "10 days ago"},
-        {"name": "Deepak Gupta", "agent_code": "AGT007", "status": "inactive", "last_active": "60 days ago"},
-        {"name": "Anjali Reddy", "agent_code": "AGT008", "status": "active", "last_active": "2 days ago"},
-    ]
-
     agents_resp = await api_client.get_assigned_agents(telegram_id)
     agents = agents_resp.get("agents", agents_resp.get("data", []))
     total_pages = agents_resp.get("total_pages", 1)
 
-    is_demo = False
     if not agents or agents_resp.get("error"):
-        agents = demo_agents
-        total_pages = 1
-        is_demo = True
-
-    text = format_agent_list(agents, page=1, total_pages=total_pages)
-    if is_demo:
-        text += f"\n\n<i>{E_WARNING} Demo data shown - API not connected</i>"
-    sent_msg = await update.message.reply_text(text, parse_mode="HTML")
+        text = (
+            f"{E_WARNING} <b>No agents found</b>\n\n"
+            "You don't have any agents assigned yet. "
+            "Ask your admin to assign agents to you, or add them via the web dashboard."
+        )
+        if agents_resp.get("error"):
+            text += f"\n\n<i>API error: {agents_resp.get('error')}</i>"
+        sent_msg = await update.message.reply_text(text, parse_mode="HTML")
+    else:
+        text = format_agent_list(agents, page=1, total_pages=total_pages)
+        sent_msg = await update.message.reply_text(text, parse_mode="HTML")
     await send_voice_response(sent_msg, text)
 
 

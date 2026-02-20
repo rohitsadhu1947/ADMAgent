@@ -64,50 +64,6 @@ def _mini_bar(value: int, max_val: int) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Demo / fallback stats data
-# ---------------------------------------------------------------------------
-
-def _get_demo_stats(name: str) -> dict:
-    """Generate demo stats when API is unreachable."""
-    return {
-        "adm_name": name,
-        "period": "February 2026",
-        # Agent portfolio
-        "total_agents": 45,
-        "active_agents": 28,
-        "at_risk_agents": 10,
-        "inactive_agents": 7,
-        # Activity
-        "total_calls": 87,
-        "total_feedbacks": 34,
-        "total_activations": 5,
-        "activation_rate": 11.1,
-        # Weekly breakdown
-        "weekly": {
-            "calls": 23,
-            "calls_target": 50,
-            "feedbacks": 12,
-            "feedbacks_target": 25,
-            "follow_ups_completed": 8,
-            "follow_ups_total": 15,
-        },
-        # Training
-        "training": {
-            "modules_completed": 4,
-            "modules_total": 10,
-            "quiz_avg_score": 78,
-            "last_training": "Smart Term Plan",
-        },
-        # Pending
-        "pending_follow_ups": 7,
-        "overdue_follow_ups": 3,
-        # Streaks
-        "daily_streak": 5,
-        "best_streak": 12,
-    }
-
-
-# ---------------------------------------------------------------------------
 # /stats command
 # ---------------------------------------------------------------------------
 
@@ -131,27 +87,31 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         stats_data = stats_resp
         if not stats_data.get("adm_name"):
             stats_data["adm_name"] = name
+
+        # Build the detailed stats message
+        stats_text = _format_detailed_stats(stats_data)
+
+        # Stats action keyboard
+        keyboard = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton(f"{E_CALENDAR} This Week", callback_data="stats_week"),
+                InlineKeyboardButton(f"{E_CHART} This Month", callback_data="stats_month"),
+            ],
+            [InlineKeyboardButton(f"{E_CHECK} Got it! / Samajh Gaya!", callback_data="stats_done")],
+        ])
+
+        sent_msg = await update.message.reply_text(
+            stats_text,
+            parse_mode="HTML",
+            reply_markup=keyboard,
+        )
+        await send_voice_response(sent_msg, stats_text)
     else:
-        stats_data = _get_demo_stats(name)
-
-    # Build the detailed stats message
-    stats_text = _format_detailed_stats(stats_data)
-
-    # Stats action keyboard
-    keyboard = InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton(f"{E_CALENDAR} This Week", callback_data="stats_week"),
-            InlineKeyboardButton(f"{E_CHART} This Month", callback_data="stats_month"),
-        ],
-        [InlineKeyboardButton(f"{E_CHECK} Got it! / Samajh Gaya!", callback_data="stats_done")],
-    ])
-
-    sent_msg = await update.message.reply_text(
-        stats_text,
-        parse_mode="HTML",
-        reply_markup=keyboard,
-    )
-    await send_voice_response(sent_msg, stats_text)
+        await update.message.reply_text(
+            f"{E_CHART} <b>No stats data available.</b>\n\n"
+            f"Please check your connection or add data via the dashboard.",
+            parse_mode="HTML",
+        )
 
 
 def _format_detailed_stats(data: dict) -> str:
@@ -309,28 +269,32 @@ async def stats_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             stats_data = stats_resp
             if not stats_data.get("adm_name"):
                 stats_data["adm_name"] = name
+
+            # Update period label
+            if data == "stats_week":
+                stats_data["period"] = "This Week"
+            else:
+                stats_data["period"] = "This Month"
+
+            stats_text = _format_detailed_stats(stats_data)
+
+            keyboard = InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton(f"{E_CALENDAR} This Week", callback_data="stats_week"),
+                    InlineKeyboardButton(f"{E_CHART} This Month", callback_data="stats_month"),
+                ],
+                [InlineKeyboardButton(f"{E_CHECK} Got it!", callback_data="stats_done")],
+            ])
+
+            await query.edit_message_text(
+                stats_text,
+                parse_mode="HTML",
+                reply_markup=keyboard,
+            )
+            await send_voice_response(query.message, stats_text)
         else:
-            stats_data = _get_demo_stats(name)
-
-        # Update period label
-        if data == "stats_week":
-            stats_data["period"] = "This Week"
-        else:
-            stats_data["period"] = "This Month"
-
-        stats_text = _format_detailed_stats(stats_data)
-
-        keyboard = InlineKeyboardMarkup([
-            [
-                InlineKeyboardButton(f"{E_CALENDAR} This Week", callback_data="stats_week"),
-                InlineKeyboardButton(f"{E_CHART} This Month", callback_data="stats_month"),
-            ],
-            [InlineKeyboardButton(f"{E_CHECK} Got it!", callback_data="stats_done")],
-        ])
-
-        await query.edit_message_text(
-            stats_text,
-            parse_mode="HTML",
-            reply_markup=keyboard,
-        )
-        await send_voice_response(query.message, stats_text)
+            await query.edit_message_text(
+                f"{E_CHART} <b>No stats data available.</b>\n\n"
+                f"Please check your connection or add data via the dashboard.",
+                parse_mode="HTML",
+            )

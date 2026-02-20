@@ -37,69 +37,6 @@ logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
-# Demo / fallback diary entries
-# ---------------------------------------------------------------------------
-
-def _get_demo_diary_entries() -> list:
-    """Generate demo diary entries when API is unreachable."""
-    today = date.today()
-    yesterday = today - timedelta(days=1)
-    tomorrow = today + timedelta(days=1)
-
-    return [
-        {
-            "id": "demo_1",
-            "title": "Call Suresh Patel - Follow up on portal issue",
-            "date": yesterday.isoformat(),
-            "priority": "overdue",
-            "completed": False,
-        },
-        {
-            "id": "demo_2",
-            "title": "Visit Priya Sharma - Commission query",
-            "date": yesterday.isoformat(),
-            "priority": "overdue",
-            "completed": False,
-        },
-        {
-            "id": "demo_3",
-            "title": "Team stand-up meeting at 10 AM",
-            "date": today.isoformat(),
-            "priority": "today",
-            "completed": True,
-        },
-        {
-            "id": "demo_4",
-            "title": "Call Amit Kumar - Term plan training",
-            "date": today.isoformat(),
-            "priority": "today",
-            "completed": False,
-        },
-        {
-            "id": "demo_5",
-            "title": "Submit weekly activity report",
-            "date": today.isoformat(),
-            "priority": "today",
-            "completed": False,
-        },
-        {
-            "id": "demo_6",
-            "title": "Follow up with Neeta Desai on proposal",
-            "date": tomorrow.isoformat(),
-            "priority": "upcoming",
-            "completed": False,
-        },
-        {
-            "id": "demo_7",
-            "title": "Product training - Smart Term Plan",
-            "date": (today + timedelta(days=2)).isoformat(),
-            "priority": "upcoming",
-            "completed": False,
-        },
-    ]
-
-
-# ---------------------------------------------------------------------------
 # Entry: /diary or /schedule
 # ---------------------------------------------------------------------------
 
@@ -110,9 +47,16 @@ async def diary_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     diary_resp = await api_client.get_diary_entries(telegram_id)
     entries = diary_resp.get("entries", diary_resp.get("data", []))
 
-    # If API is down, show demo diary entries
-    if diary_resp.get("error") or not entries:
-        entries = _get_demo_diary_entries()
+    if diary_resp.get("error"):
+        await update.message.reply_text(
+            f"{E_CALENDAR} <b>No diary entries yet.</b>\n\n"
+            f"Please check your connection or add entries via the dashboard.\n"
+            f"You can also use the Add button below to create a new entry.",
+            parse_mode="HTML",
+            reply_markup=diary_action_keyboard(),
+        )
+        context.user_data["diary_entries"] = []
+        return DiaryStates.VIEW_DIARY
 
     context.user_data["diary_entries"] = entries
 
@@ -199,8 +143,8 @@ async def diary_action(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
         telegram_id = update.effective_user.id
         diary_resp = await api_client.get_diary_entries(telegram_id)
         entries = diary_resp.get("entries", diary_resp.get("data", []))
-        if diary_resp.get("error") or not entries:
-            entries = _get_demo_diary_entries()
+        if diary_resp.get("error"):
+            entries = []
         context.user_data["diary_entries"] = entries
 
         diary_text = format_diary(entries)
@@ -256,8 +200,7 @@ async def add_entry_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     result = await api_client.add_diary_entry(payload)
 
     if result.get("error"):
-        logger.warning("Diary add API failed (demo mode): %s", result)
-        # Still show success for demo
+        logger.warning("Diary add API failed: %s", result)
 
     await update.message.reply_text(
         f"{E_CHECK} <b>Entry Added!</b>\n\n"
@@ -270,16 +213,8 @@ async def add_entry_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     # Show updated diary
     diary_resp = await api_client.get_diary_entries(telegram_id)
     entries = diary_resp.get("entries", diary_resp.get("data", []))
-    if diary_resp.get("error") or not entries:
-        entries = _get_demo_diary_entries()
-        # Add the new entry to demo data at the top
-        entries.insert(0, {
-            "id": f"new_{datetime.now().timestamp():.0f}",
-            "title": text,
-            "date": date.today().isoformat(),
-            "priority": "today",
-            "completed": False,
-        })
+    if diary_resp.get("error"):
+        entries = []
     context.user_data["diary_entries"] = entries
 
     diary_text = format_diary(entries)
@@ -310,8 +245,7 @@ async def entry_action(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
         result = await api_client.update_diary_entry(entry_id, {"completed": True})
 
         if result.get("error"):
-            logger.warning("Diary complete API failed (demo mode): %s", result)
-            # Still show success for demo
+            logger.warning("Diary complete API failed: %s", result)
 
         await query.edit_message_text(
             f"{E_CHECK} <b>Entry Completed!</b> {E_SPARKLE}\n\n"
@@ -358,8 +292,7 @@ async def reschedule_action(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         result = await api_client.update_diary_entry(entry_id, {"date": new_date})
 
         if result.get("error"):
-            logger.warning("Diary reschedule API failed (demo mode): %s", result)
-            # Still show success for demo
+            logger.warning("Diary reschedule API failed: %s", result)
 
         await query.edit_message_text(
             f"{E_CALENDAR} <b>Entry Rescheduled!</b>\n\n"

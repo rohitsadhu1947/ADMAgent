@@ -26,18 +26,18 @@ logger = logging.getLogger("adm_platform")
 
 
 def run_seed_if_empty():
-    """Check if the database is empty and seed it with demo data."""
-    from models import Agent
+    """Seed reference data (products, admin user) if not already present."""
+    from models import Product
     db = SessionLocal()
     try:
-        count = db.query(Agent).count()
+        count = db.query(Product).count()
         if count == 0:
-            logger.info("Database is empty. Running seed data...")
+            logger.info("No products found. Seeding reference data...")
             from seed_data import seed_database
             seed_database(db)
-            logger.info("Seed data loaded successfully.")
+            logger.info("Reference data seeded successfully.")
         else:
-            logger.info(f"Database already has {count} agents. Skipping seed.")
+            logger.info(f"Database has {count} products. Skipping seed.")
     except Exception as e:
         logger.error(f"Error during seeding: {e}")
         db.rollback()

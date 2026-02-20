@@ -5,7 +5,6 @@ new assignments, and performance stats.
 """
 
 import logging
-from datetime import datetime
 
 from telegram import Update
 from telegram.ext import (
@@ -31,80 +30,6 @@ from utils.keyboards import briefing_action_keyboard
 from utils.voice import send_voice_response
 
 logger = logging.getLogger(__name__)
-
-
-# ---------------------------------------------------------------------------
-# Demo / fallback briefing data
-# ---------------------------------------------------------------------------
-TRAINING_TIPS = [
-    f"{E_SHIELD} Smart Term Plan starts at just Rs 595/month for Rs 1 Crore cover - sabse affordable protection!",
-    f"{E_BULB} Customer ko pehle unki need samjhao, phir product pitch karo. Need-based selling works best!",
-    f"{E_STAR} ULIP mein 5 saal ka lock-in hota hai - customer ko yeh clearly batayein upfront.",
-    f"{E_MONEY} Commission structure samajhna zaroori hai - renewal commission long-term income deti hai!",
-    f"{E_FIRE} Pension plans ka best selling point: Tax-free income after retirement under Section 10(10A).",
-    f"{E_BRAIN} Objection handling tip: 'Sochna padega' ka matlab hai customer ko aur information chahiye. Push mat karo, educate karo!",
-    f"{E_HEART} Child plan pitch karte waqt, bachche ki photo ya naam puchho - emotional connect banao!",
-    f"{E_TARGET} Dormant agents ko re-activate karna hai? Pehle unki problem suno, phir solution do.",
-    f"{E_ROCKET} Digital tools use karo! Online proposal submission se customer experience 10x better hota hai.",
-    f"{E_CLAP} Har din 10 calls ka target rakho - consistency is the key to success!",
-]
-
-
-def _get_demo_briefing(name: str) -> dict:
-    """Generate demo briefing data when API is unreachable."""
-    day_of_year = datetime.now().timetuple().tm_yday
-    tip = TRAINING_TIPS[day_of_year % len(TRAINING_TIPS)]
-
-    return {
-        "adm_name": name,
-        "priority_agents": [
-            {
-                "name": "Suresh Patel",
-                "agent_code": "AGT001",
-                "reason": f"{E_RED_CIRCLE} Dormant 45 days - Last said: Portal login issues",
-                "status": "inactive",
-            },
-            {
-                "name": "Priya Sharma",
-                "agent_code": "AGT002",
-                "reason": f"{E_YELLOW_CIRCLE} At Risk - Commission query pending since 5 days",
-                "status": "at_risk",
-            },
-            {
-                "name": "Amit Kumar",
-                "agent_code": "AGT003",
-                "reason": f"{E_YELLOW_CIRCLE} Follow-up due today - Interested in term plan training",
-                "status": "at_risk",
-            },
-            {
-                "name": "Neeta Desai",
-                "agent_code": "AGT004",
-                "reason": f"{E_GREEN_CIRCLE} Active - Submitted 2 proposals, needs support",
-                "status": "active",
-            },
-            {
-                "name": "Rajesh Verma",
-                "agent_code": "AGT005",
-                "reason": f"{E_RED_CIRCLE} Inactive 30 days - Was top performer last quarter",
-                "status": "inactive",
-            },
-        ],
-        "overdue_followups": [
-            {"agent_name": "Suresh Patel", "due_date": "12 Feb 2026"},
-            {"agent_name": "Kiran Joshi", "due_date": "14 Feb 2026"},
-            {"agent_name": "Mohan Das", "due_date": "15 Feb 2026"},
-        ],
-        "new_assignments": [
-            {"name": "Ananya Singh", "agent_code": "AGT050"},
-            {"name": "Vikram Reddy", "agent_code": "AGT051"},
-        ],
-        "training_tip": tip,
-        "yesterday_stats": {
-            "calls": 8,
-            "feedbacks": 3,
-            "activations": 1,
-        },
-    }
 
 
 # ---------------------------------------------------------------------------
@@ -139,25 +64,34 @@ async def briefing_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         # Ensure adm_name is set
         if not briefing_data.get("adm_name"):
             briefing_data["adm_name"] = name
+
+        # Format the briefing
+        briefing_text = format_morning_briefing(briefing_data)
+
+        # Delete loading message and send briefing
+        try:
+            await loading_msg.delete()
+        except Exception:
+            pass
+
+        sent_msg = await update.message.reply_text(
+            briefing_text,
+            parse_mode="HTML",
+            reply_markup=briefing_action_keyboard(),
+        )
+        await send_voice_response(sent_msg, briefing_text)
     else:
-        # Use demo data
-        briefing_data = _get_demo_briefing(name)
+        # No data available
+        try:
+            await loading_msg.delete()
+        except Exception:
+            pass
 
-    # Format the briefing
-    briefing_text = format_morning_briefing(briefing_data)
-
-    # Delete loading message and send briefing
-    try:
-        await loading_msg.delete()
-    except Exception:
-        pass
-
-    sent_msg = await update.message.reply_text(
-        briefing_text,
-        parse_mode="HTML",
-        reply_markup=briefing_action_keyboard(),
-    )
-    await send_voice_response(sent_msg, briefing_text)
+        await update.message.reply_text(
+            f"{E_SUNRISE} <b>No briefing data available.</b>\n\n"
+            f"Please check your connection or add data via the dashboard.",
+            parse_mode="HTML",
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -179,12 +113,12 @@ async def briefing_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         agents = priority_resp.get("agents", priority_resp.get("data", []))
 
         if not agents or priority_resp.get("error"):
-            # Demo data
-            agents = [
-                {"name": "Suresh Patel", "phone": "+91-98765-43210", "reason": "Dormant 45 days"},
-                {"name": "Priya Sharma", "phone": "+91-98765-43211", "reason": "Commission query pending"},
-                {"name": "Amit Kumar", "phone": "+91-98765-43212", "reason": "Follow-up due today"},
-            ]
+            await query.edit_message_text(
+                f"{E_PHONE} <b>No priority agents data available.</b>\n\n"
+                f"Please check your connection or add agents via the dashboard.",
+                parse_mode="HTML",
+            )
+            return
 
         lines = [
             f"{E_PHONE} <b>Priority Agents to Call</b>\n",
