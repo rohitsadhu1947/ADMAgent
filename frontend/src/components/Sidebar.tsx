@@ -19,6 +19,7 @@ import {
   MessageCircle,
   Shuffle,
   UserCog,
+  Ticket,
 } from 'lucide-react';
 import { useAuth } from '@/lib/AuthContext';
 
@@ -26,6 +27,7 @@ const adminNavItems = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/agents', label: 'Agents', icon: Users },
   { href: '/adm', label: 'ADM Performance', icon: BarChart3 },
+  { href: '/feedback-tickets', label: 'Feedback Intelligence', icon: Ticket },
   { href: '/feedback', label: 'Feedback Analytics', icon: MessageSquare },
   { href: '/training', label: 'Training', icon: GraduationCap },
   { href: '/activity', label: 'Live Activity', icon: Activity },
@@ -39,6 +41,7 @@ const admNavItems = [
   { href: '/', label: 'My Dashboard', icon: LayoutDashboard },
   { href: '/my-agents', label: 'My Agents', icon: Users },
   { href: '/planner', label: 'Daily Planner', icon: CalendarDays },
+  { href: '/feedback-tickets', label: 'Feedback Tickets', icon: Ticket },
   { href: '/playbooks', label: 'Action Plans', icon: BookOpen },
   { href: '/comms', label: 'Communication Hub', icon: MessageCircle },
   { href: '/training', label: 'Training Center', icon: GraduationCap },

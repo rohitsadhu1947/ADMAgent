@@ -183,4 +183,24 @@ export const api = {
   getCommTemplates: () => fetchAPI<any[]>('/communication/templates'),
   getCommTemplate: (name: string) => fetchAPI<any>(`/communication/templates/${name}`),
   getCallScripts: () => fetchAPI<any[]>('/communication/call-scripts'),
+
+  // Feedback Tickets (Intelligence Workflow)
+  getReasonTaxonomy: () => fetchAPI<any[]>('/feedback-tickets/reasons'),
+  getReasonsByBucket: () => fetchAPI<any>('/feedback-tickets/reasons/by-bucket'),
+  submitFeedbackTicket: (data: any) =>
+    fetchAPI<any>('/feedback-tickets/submit', { method: 'POST', body: JSON.stringify(data) }),
+  listFeedbackTickets: (params?: Record<string, string>) => {
+    const qs = params ? `?${new URLSearchParams(params).toString()}` : '';
+    return fetchAPI<any>(`/feedback-tickets/${qs}`);
+  },
+  getFeedbackTicket: (ticketId: string) => fetchAPI<any>(`/feedback-tickets/${ticketId}`),
+  respondToTicket: (ticketId: string, data: any) =>
+    fetchAPI<any>(`/feedback-tickets/${ticketId}/respond`, { method: 'POST', body: JSON.stringify(data) }),
+  markScriptSent: (ticketId: string) =>
+    fetchAPI<any>(`/feedback-tickets/${ticketId}/script-sent`, { method: 'POST' }),
+  rateScript: (ticketId: string, data: any) =>
+    fetchAPI<any>(`/feedback-tickets/${ticketId}/rate-script`, { method: 'POST', body: JSON.stringify(data) }),
+  getDepartmentQueue: (department: string) => fetchAPI<any>(`/feedback-tickets/queue/${department}`),
+  getTicketAnalytics: () => fetchAPI<any>('/feedback-tickets/analytics/summary'),
+  getAggregationAlerts: () => fetchAPI<any>('/feedback-tickets/alerts'),
 };
