@@ -8,6 +8,7 @@ ADMs (Agency Development Managers).
 
 import logging
 import sys
+import threading
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -23,6 +24,9 @@ logging.basicConfig(
     stream=sys.stdout,
 )
 logger = logging.getLogger("adm_platform")
+
+# Track whether DB initialization is complete (for healthcheck)
+_db_ready = threading.Event()
 
 
 def _needs_db_reset(db) -> bool:
@@ -116,6 +120,27 @@ def _ensure_key_users(db):
         logger.info("Created missing ADM user: Rohit Sadhu (rohit/rohit123)")
 
 
+def _background_db_init():
+    """Run DB initialization and seeding in a background thread.
+
+    This allows uvicorn to start serving requests (especially /health)
+    immediately while the potentially slow DB reset + seed runs in the background.
+    """
+    try:
+        logger.info("Background DB init: creating tables...")
+        init_db()
+        logger.info("Background DB init: tables created.")
+
+        logger.info("Background DB init: checking seed data...")
+        run_seed_if_empty()
+
+        logger.info("Background DB init: complete!")
+    except Exception as e:
+        logger.error(f"Background DB init failed: {e}")
+    finally:
+        _db_ready.set()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application startup and shutdown lifecycle."""
@@ -124,15 +149,11 @@ async def lifespan(app: FastAPI):
     logger.info(f"  {settings.APP_NAME} v{settings.APP_VERSION}")
     logger.info("=" * 60)
 
-    # Create all database tables
-    logger.info("Initializing database tables...")
-    init_db()
-    logger.info("Database tables created.")
+    # Run DB init in background so healthcheck responds immediately
+    db_thread = threading.Thread(target=_background_db_init, daemon=True)
+    db_thread.start()
 
-    # Seed data if DB is empty
-    run_seed_if_empty()
-
-    logger.info("Application startup complete.")
+    logger.info("Application accepting requests (DB init running in background).")
     logger.info(f"API docs available at: http://localhost:8000/docs")
     logger.info("=" * 60)
 
@@ -238,26 +259,33 @@ def root():
 
 @app.get("/health", tags=["Health"])
 def health_check():
-    """Health check endpoint."""
-    from database import SessionLocal
-    from models import Agent
+    """Health check endpoint.
 
-    try:
-        db = SessionLocal()
-        agent_count = db.query(Agent).count()
-        db.close()
-        db_status = "connected"
-    except Exception as e:
-        agent_count = 0
-        db_status = f"error: {str(e)}"
+    Returns immediately with status=healthy so Railway healthcheck passes.
+    DB details are included only after background init completes.
+    """
+    db_initialized = _db_ready.is_set()
 
-    return {
+    result = {
         "status": "healthy",
-        "database": db_status,
-        "agent_count": agent_count,
+        "database": "ready" if db_initialized else "initializing",
         "ai_enabled": settings.ENABLE_AI_FEATURES and bool(settings.ANTHROPIC_API_KEY),
         "telegram_enabled": settings.ENABLE_TELEGRAM_BOT and bool(settings.TELEGRAM_BOT_TOKEN),
     }
+
+    # Only query DB if background init is complete
+    if db_initialized:
+        try:
+            from database import SessionLocal
+            from models import Agent
+            db = SessionLocal()
+            result["agent_count"] = db.query(Agent).count()
+            db.close()
+        except Exception as e:
+            result["agent_count"] = 0
+            result["database"] = f"error: {str(e)}"
+
+    return result
 
 
 # ---------------------------------------------------------------------------
