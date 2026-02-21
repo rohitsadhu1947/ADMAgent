@@ -4,7 +4,6 @@ WORKDIR /app
 
 # Install system deps
 RUN apt-get update && apt-get install -y \
-    curl \
     gcc \
     libffi-dev \
     && rm -rf /var/lib/apt/lists/*
@@ -17,8 +16,7 @@ RUN pip install --no-cache-dir --upgrade pip && \
 # Copy project files
 COPY backend/ ./backend/
 COPY bot/ ./bot/
-COPY railway_start.sh .
-RUN chmod +x railway_start.sh
+COPY start.py .
 
-# Start backend + telegram bot
-CMD ["./railway_start.sh"]
+# Start via Python launcher (replaces bash script for reliability)
+CMD ["python", "start.py"]
