@@ -106,6 +106,7 @@ def _enrich_ticket(ticket: FeedbackTicket, db: Session) -> dict:
         "generated_script": ticket.generated_script,
         "script_sent_at": ticket.script_sent_at,
         "adm_script_rating": ticket.adm_script_rating,
+        "voice_file_id": ticket.voice_file_id,
         "parent_ticket_id": ticket.parent_ticket_id,
         "created_at": ticket.created_at,
         "updated_at": ticket.updated_at,
@@ -247,6 +248,7 @@ async def submit_feedback_ticket(
             sla_deadline=sla_deadline,
             status="routed",
             parent_ticket_id=parent_ticket_id,
+            voice_file_id=data.voice_file_id,
         )
         db.add(ticket)
         db.flush()

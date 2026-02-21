@@ -517,6 +517,7 @@ class FeedbackTicketSubmit(BaseModel):
     channel: str = "telegram"  # telegram | whatsapp | web
     selected_reason_codes: Optional[List[str]] = None  # e.g., ["UW-01", "FIN-03"]
     raw_feedback_text: Optional[str] = None  # free-text from ADM
+    voice_file_id: Optional[str] = None  # Telegram voice note file ID
 
 
 class FeedbackTicketResponse(BaseModel):
@@ -546,6 +547,7 @@ class FeedbackTicketResponse(BaseModel):
     generated_script: Optional[str] = None
     script_sent_at: Optional[datetime] = None
     adm_script_rating: Optional[str] = None
+    voice_file_id: Optional[str] = None
     parent_ticket_id: Optional[str] = None
     created_at: datetime
     updated_at: Optional[datetime] = None

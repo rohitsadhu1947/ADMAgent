@@ -75,11 +75,17 @@ class FeedbackStates:
 # Interaction logging states
 class InteractionStates:
     SELECT_AGENT = 10
-    SELECT_TOPIC = 11
-    SELECT_OUTCOME = 12
-    SCHEDULE_FOLLOWUP = 13
-    ADD_NOTES = 14
-    CONFIRM = 15
+    SELECT_TYPE = 11       # NEW: feedback vs quick log
+    SELECT_TOPIC = 12      # quick log path
+    SELECT_OUTCOME = 13    # quick log path
+    SCHEDULE_FOLLOWUP = 14 # quick log path
+    ADD_NOTES = 15         # quick log path
+    CONFIRM = 16           # quick log path
+    # Feedback sub-flow (within /log)
+    FB_SELECT_BUCKET = 17
+    FB_SELECT_REASONS = 18
+    FB_ADD_NOTES = 19
+    FB_CONFIRM = 20
 
 
 # Training flow states

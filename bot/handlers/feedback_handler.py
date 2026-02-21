@@ -168,8 +168,24 @@ async def feedback_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     """Start the feedback capture flow."""
     global _reason_cache
     telegram_id = update.effective_user.id
+
+    # --- FIX: Fetch ADM profile at the START and store adm_id early ---
+    profile = await api_client.get_adm_profile(telegram_id)
+    if profile.get("error") or not profile.get("id", profile.get("adm_id")):
+        await update.message.reply_text(
+            f"{E_WARNING} <b>Profile Not Found</b>\n\n"
+            "You need to register first before submitting feedback.\n"
+            "Pehle register karein, phir feedback dein.\n\n"
+            "Use /start to register.",
+            parse_mode="HTML",
+        )
+        return ConversationHandler.END
+
+    adm_id = profile.get("id", profile.get("adm_id"))
+
     context.user_data["fb"] = {
         "adm_telegram_id": telegram_id,
+        "adm_id": adm_id,
         "selected_codes": [],
     }
 
@@ -543,21 +559,26 @@ async def confirm_feedback(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
     fb = context.user_data.get("fb", {})
 
-    # Submit to API
+    # Submit to API — adm_id was fetched and stored at the start of the flow
+    adm_id = fb.get("adm_id", 0)
+    if not adm_id:
+        await query.edit_message_text(
+            f"{E_WARNING} <b>Session Error</b>\n\n"
+            f"Your ADM profile could not be found. Please use /start to register first.\n"
+            f"Aapka profile nahi mila. Pehle /start se register karein.",
+            parse_mode="HTML",
+        )
+        context.user_data.pop("fb", None)
+        return ConversationHandler.END
+
     payload = {
         "agent_id": int(fb.get("agent_id", 0)),
-        "adm_id": 0,
+        "adm_id": adm_id,
         "channel": "telegram",
         "selected_reason_codes": fb.get("selected_codes", []),
         "raw_feedback_text": fb.get("free_text"),
+        "voice_file_id": fb.get("voice_file_id"),
     }
-
-    # Try to get ADM ID from profile
-    telegram_id = fb.get("adm_telegram_id")
-    if telegram_id:
-        profile = await api_client.get_adm_profile(telegram_id)
-        if not profile.get("error"):
-            payload["adm_id"] = profile.get("id", profile.get("adm_id", 0))
 
     result = await api_client.submit_feedback_ticket(payload)
 

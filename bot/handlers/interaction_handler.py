@@ -1,12 +1,16 @@
 """
 Interaction logging conversation handler for the ADM Platform Telegram Bot.
-Flow: Agent -> Topic -> Outcome -> Follow-up -> Notes -> Confirm
+
+UNIFIED FLOW:
+  Agent -> Type Choice (Feedback vs Quick Log)
+    - Quick Log path:  Topic -> Outcome -> Follow-up -> Notes -> Confirm  (saves Interaction)
+    - Feedback path:   Bucket -> Reasons (multi-select) -> Notes -> Confirm  (saves FeedbackTicket)
 """
 
 import logging
 from datetime import datetime, timedelta
 
-from telegram import Update
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     CommandHandler,
     ConversationHandler,
@@ -26,6 +30,7 @@ from utils.formatters import (
     voice_note_received,
     E_HANDSHAKE, E_PERSON, E_PENCIL, E_CHECK, E_CROSS,
     E_CALENDAR, E_MEMO, E_MIC, E_CHAT,
+    E_WARNING, E_SPARKLE,
 )
 from utils.keyboards import (
     agent_list_keyboard,
@@ -36,6 +41,18 @@ from utils.keyboards import (
     confirm_keyboard,
 )
 from utils.voice import send_voice_response
+
+# Import feedback taxonomy helpers from feedback_handler
+from handlers.feedback_handler import (
+    _bucket_keyboard,
+    _reason_keyboard,
+    _notes_keyboard,
+    _format_selected_reasons,
+    _build_summary,
+    _bucket_from_code,
+    _get_reasons,
+    BUCKET_CONFIG,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +81,25 @@ FOLLOWUP_DAYS = {
 
 
 # ---------------------------------------------------------------------------
+# Keyboard: interaction type choice (feedback vs quick log)
+# ---------------------------------------------------------------------------
+
+def interaction_type_keyboard():
+    buttons = [
+        [InlineKeyboardButton(
+            "\U0001F4DD Log Agent Feedback / Feedback Dein",
+            callback_data="itype_feedback",
+        )],
+        [InlineKeyboardButton(
+            "\U0001F4DE Quick Call Log / Call Log Karein",
+            callback_data="itype_quicklog",
+        )],
+        [InlineKeyboardButton(f"{E_CROSS} Cancel", callback_data="cancel")],
+    ]
+    return InlineKeyboardMarkup(buttons)
+
+
+# ---------------------------------------------------------------------------
 # Entry: /log
 # ---------------------------------------------------------------------------
 
@@ -71,7 +107,16 @@ async def log_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
     """Start the interaction logging flow."""
     telegram_id = update.effective_user.id
 
-    context.user_data["ilog"] = {"adm_telegram_id": telegram_id}
+    # Fetch ADM profile early so we have adm_id for the feedback path
+    profile = await api_client.get_adm_profile(telegram_id)
+    adm_id = None
+    if not profile.get("error"):
+        adm_id = profile.get("id", profile.get("adm_id"))
+
+    context.user_data["ilog"] = {
+        "adm_telegram_id": telegram_id,
+        "adm_id": adm_id,
+    }
 
     # Fetch agents from API
     agents_resp = await api_client.get_assigned_agents(telegram_id)
@@ -152,14 +197,15 @@ async def select_agent(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     context.user_data["ilog"]["agent_id"] = agent_id
     context.user_data["ilog"]["agent_name"] = agent_name
 
+    # NEW: Ask what type of interaction to log
     await query.edit_message_text(
         f"{E_PERSON} Agent: <b>{agent_name}</b>\n\n"
-        f"{E_CHAT} What was discussed?\n"
-        f"Kya baat hui?",
+        f"What happened? / Kya hua?\n"
+        f"Choose an option below:",
         parse_mode="HTML",
-        reply_markup=interaction_topic_keyboard(),
+        reply_markup=interaction_type_keyboard(),
     )
-    return InteractionStates.SELECT_TOPIC
+    return InteractionStates.SELECT_TYPE
 
 
 # ---------------------------------------------------------------------------
@@ -192,7 +238,71 @@ async def search_agent_text(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
 
 # ---------------------------------------------------------------------------
-# Step 2: Topic
+# Step 2 (NEW): Type selection — feedback vs quick log
+# ---------------------------------------------------------------------------
+
+async def select_type(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handle interaction type selection."""
+    query = update.callback_query
+    await query.answer()
+    data = query.data
+
+    ilog = context.user_data.get("ilog", {})
+    agent_name = ilog.get("agent_name", "Agent")
+
+    if data == "itype_quicklog":
+        # Quick log path — go to topic selection (original flow)
+        await query.edit_message_text(
+            f"{E_PERSON} Agent: <b>{agent_name}</b>\n\n"
+            f"{E_CHAT} What was discussed?\n"
+            f"Kya baat hui?",
+            parse_mode="HTML",
+            reply_markup=interaction_topic_keyboard(),
+        )
+        return InteractionStates.SELECT_TOPIC
+
+    if data == "itype_feedback":
+        # Feedback path — check if ADM profile exists
+        adm_id = ilog.get("adm_id")
+        if not adm_id:
+            await query.edit_message_text(
+                f"{E_WARNING} <b>Profile Not Found</b>\n\n"
+                "You need to register first before submitting feedback.\n"
+                "Pehle register karein, phir feedback dein.\n\n"
+                "Use /start to register.",
+                parse_mode="HTML",
+            )
+            context.user_data.pop("ilog", None)
+            return ConversationHandler.END
+
+        # Initialize feedback sub-flow data within ilog
+        ilog["fb_selected_codes"] = []
+        ilog["fb_free_text"] = None
+        ilog["fb_voice_file_id"] = None
+
+        # Pre-fetch reason taxonomy
+        await _get_reasons()
+
+        # Go to bucket selection
+        await query.edit_message_text(
+            f"{E_PERSON} Agent: <b>{agent_name}</b>\n\n"
+            f"What category does their feedback fall under?\n"
+            f"Unka feedback kis category mein aata hai?",
+            parse_mode="HTML",
+            reply_markup=_bucket_keyboard(),
+        )
+        return InteractionStates.FB_SELECT_BUCKET
+
+    # Unknown type — shouldn't happen
+    return InteractionStates.SELECT_TYPE
+
+
+# ═══════════════════════════════════════════════════════════════════
+# QUICK LOG PATH (original flow, states 12-16)
+# ═══════════════════════════════════════════════════════════════════
+
+# ---------------------------------------------------------------------------
+# Step 3: Topic
 # ---------------------------------------------------------------------------
 
 async def select_topic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -213,7 +323,7 @@ async def select_topic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
 
 
 # ---------------------------------------------------------------------------
-# Step 3: Outcome
+# Step 4: Outcome
 # ---------------------------------------------------------------------------
 
 async def select_outcome(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -234,7 +344,7 @@ async def select_outcome(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 
 # ---------------------------------------------------------------------------
-# Step 4: Follow-up
+# Step 5: Follow-up
 # ---------------------------------------------------------------------------
 
 async def schedule_followup(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -259,7 +369,7 @@ async def schedule_followup(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
 
 # ---------------------------------------------------------------------------
-# Step 5: Notes
+# Step 6: Notes
 # ---------------------------------------------------------------------------
 
 async def notes_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -307,7 +417,7 @@ async def receive_notes_voice(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 
 # ---------------------------------------------------------------------------
-# Step 6: Confirm
+# Step 7: Confirm (Quick Log)
 # ---------------------------------------------------------------------------
 
 async def confirm_interaction(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -353,12 +463,335 @@ async def confirm_interaction(update: Update, context: ContextTypes.DEFAULT_TYPE
     return ConversationHandler.END
 
 
+# ═══════════════════════════════════════════════════════════════════
+# FEEDBACK PATH (inline taxonomy flow, states 17-20)
+# ═══════════════════════════════════════════════════════════════════
+
+# ---------------------------------------------------------------------------
+# FB Step 1: Select bucket (category)
+# ---------------------------------------------------------------------------
+
+async def fb_select_bucket(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handle bucket selection in the feedback sub-flow — show reasons for multi-select."""
+    query = update.callback_query
+    await query.answer()
+
+    bucket = query.data.replace("fbucket_", "")
+    ilog = context.user_data.get("ilog", {})
+    ilog["fb_current_bucket"] = bucket
+    reasons_cache = await _get_reasons()
+    reasons = reasons_cache.get(bucket, [])
+
+    if not reasons:
+        await query.edit_message_text(
+            f"{E_WARNING} No reasons found for this category. Try another or /cancel.",
+            parse_mode="HTML",
+            reply_markup=_bucket_keyboard(),
+        )
+        return InteractionStates.FB_SELECT_BUCKET
+
+    selected = ilog.get("fb_selected_codes", [])
+    cfg = BUCKET_CONFIG.get(bucket, {})
+
+    text = (
+        f"{cfg.get('emoji', '')} <b>{cfg.get('name', bucket)}</b>\n\n"
+        f"Tap reasons to select/deselect (multi-select):\n"
+        f"Reason tap karein chunne ke liye:\n"
+    )
+    if selected:
+        text += f"\n<b>Selected so far:</b> {len(selected)}\n"
+
+    await query.edit_message_text(
+        text,
+        parse_mode="HTML",
+        reply_markup=_reason_keyboard(bucket, selected, reasons),
+    )
+    return InteractionStates.FB_SELECT_REASONS
+
+
+# ---------------------------------------------------------------------------
+# FB Step 2: Multi-select reasons
+# ---------------------------------------------------------------------------
+
+async def fb_toggle_reason(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Toggle a reason code selection in the feedback sub-flow."""
+    query = update.callback_query
+    await query.answer()
+    data = query.data
+
+    ilog = context.user_data.get("ilog", {})
+    selected = ilog.get("fb_selected_codes", [])
+    bucket = ilog.get("fb_current_bucket", "operations")
+    reasons_cache = await _get_reasons()
+
+    # Done — move to notes
+    if data == "freason_done":
+        if not selected:
+            await query.answer("Select at least one reason / Kam se kam ek reason chunein", show_alert=True)
+            return InteractionStates.FB_SELECT_REASONS
+
+        agent_name = ilog.get("agent_name", "Agent")
+        reasons_text = _format_selected_reasons(selected, reasons_cache)
+
+        await query.edit_message_text(
+            f"{E_PERSON} Agent: <b>{agent_name}</b>\n"
+            f"{E_MEMO} <b>Selected Reasons ({len(selected)}):</b>\n"
+            f"{reasons_text}\n\n"
+            f"Would you like to add more details in free text?\n"
+            f"Kya aap aur details dena chahenge?",
+            parse_mode="HTML",
+            reply_markup=_notes_keyboard(),
+        )
+        return InteractionStates.FB_ADD_NOTES
+
+    # Back to bucket selection
+    if data == "freason_back":
+        await query.edit_message_text(
+            f"{E_PERSON} Agent: <b>{ilog.get('agent_name', 'Agent')}</b>\n\n"
+            f"Select feedback category:\n"
+            f"Feedback category chunein:",
+            parse_mode="HTML",
+            reply_markup=_bucket_keyboard(),
+        )
+        return InteractionStates.FB_SELECT_BUCKET
+
+    # Add from another bucket
+    if data == "freason_add_bucket":
+        await query.edit_message_text(
+            f"{E_PERSON} Agent: <b>{ilog.get('agent_name', 'Agent')}</b>\n"
+            f"<b>Already selected:</b> {len(selected)} reasons\n\n"
+            f"Select another department category:\n"
+            f"Ek aur department chunein:",
+            parse_mode="HTML",
+            reply_markup=_bucket_keyboard(),
+        )
+        return InteractionStates.FB_SELECT_BUCKET
+
+    # Toggle reason code
+    code = data.replace("freason_", "")
+    if code in selected:
+        selected.remove(code)
+    else:
+        selected.append(code)
+    ilog["fb_selected_codes"] = selected
+
+    # Refresh keyboard
+    reasons = reasons_cache.get(bucket, [])
+    cfg = BUCKET_CONFIG.get(bucket, {})
+    text = (
+        f"{cfg.get('emoji', '')} <b>{cfg.get('name', bucket)}</b>\n\n"
+        f"Tap reasons to select/deselect:\n"
+    )
+    if selected:
+        text += f"\n<b>Selected:</b> {len(selected)} reasons\n"
+
+    await query.edit_message_text(
+        text,
+        parse_mode="HTML",
+        reply_markup=_reason_keyboard(bucket, selected, reasons),
+    )
+    return InteractionStates.FB_SELECT_REASONS
+
+
+# ---------------------------------------------------------------------------
+# FB Step 3: Optional free text notes
+# ---------------------------------------------------------------------------
+
+async def fb_notes_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handle notes option selection in the feedback sub-flow."""
+    query = update.callback_query
+    await query.answer()
+
+    if query.data == "fnotes_skip":
+        context.user_data["ilog"]["fb_free_text"] = None
+        return await _fb_show_confirmation(query, context)
+
+    if query.data == "fnotes_voice":
+        await query.edit_message_text(
+            f"\U0001F3A4 <b>Send a voice note now</b>\n\n"
+            f"Agent ne kya bataya, apni awaaz mein record karein:\n"
+            f"Ya type bhi kar sakte hain.",
+            parse_mode="HTML",
+        )
+        return InteractionStates.FB_ADD_NOTES
+
+    # Ask for text
+    await query.edit_message_text(
+        f"{E_PENCIL} <b>Type your additional details:</b>\n\n"
+        f"Agent ne aur kya bataya? Free-text mein likhein:\n\n"
+        f"<i>(e.g., 'He says too many proposals are rejected in his district...')</i>",
+        parse_mode="HTML",
+    )
+    return InteractionStates.FB_ADD_NOTES
+
+
+async def fb_receive_notes_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Receive free text notes for feedback sub-flow."""
+    context.user_data["ilog"]["fb_free_text"] = update.message.text.strip()
+    return await _fb_show_confirmation_msg(update, context)
+
+
+async def fb_receive_notes_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Receive voice note as feedback details in the feedback sub-flow."""
+    voice = update.message.voice
+    context.user_data["ilog"]["fb_free_text"] = f"[Voice note: {voice.duration}s]"
+    context.user_data["ilog"]["fb_voice_file_id"] = voice.file_id
+
+    await update.message.reply_text(
+        f"\U0001F3A4 <b>Voice note received!</b> ({voice.duration}s)\n"
+        f"Voice note mil gaya! Proceeding to confirmation...",
+        parse_mode="HTML",
+    )
+    return await _fb_show_confirmation_msg(update, context)
+
+
+# ---------------------------------------------------------------------------
+# FB Step 4: Confirm and submit
+# ---------------------------------------------------------------------------
+
+def _fb_build_summary(ilog: dict, reasons_cache: dict) -> str:
+    """Build confirmation summary for feedback sub-flow."""
+    agent_name = ilog.get("agent_name", "Agent")
+    selected = ilog.get("fb_selected_codes", [])
+    free_text = ilog.get("fb_free_text")
+
+    reasons_text = _format_selected_reasons(selected, reasons_cache)
+
+    text = (
+        f"{E_SPARKLE} <b>Feedback Summary / Feedback Ka Saar</b>\n"
+        f"{'=' * 30}\n"
+        f"{E_PERSON} <b>Agent:</b> {agent_name}\n\n"
+        f"{E_MEMO} <b>Reasons ({len(selected)}):</b>\n"
+        f"{reasons_text}\n"
+    )
+    if free_text:
+        display_text = free_text if len(free_text) <= 200 else free_text[:197] + "..."
+        text += f"\n{E_PENCIL} <b>Additional Details:</b>\n<i>{display_text}</i>\n"
+
+    # Show which departments will receive
+    buckets = list({_bucket_from_code(c) for c in selected})
+    dept_names = [BUCKET_CONFIG.get(b, {}).get("name", b) for b in buckets]
+    text += (
+        f"\n\U0001F3E2 <b>Will be routed to:</b> {', '.join(dept_names)}\n"
+        f"{'=' * 30}\n"
+        f"\nConfirm to submit / Submit karne ke liye confirm karein:"
+    )
+    return text
+
+
+async def _fb_show_confirmation(query, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Show confirmation summary (from callback query)."""
+    ilog = context.user_data.get("ilog", {})
+    reasons_cache = await _get_reasons()
+    summary = _fb_build_summary(ilog, reasons_cache)
+
+    await query.edit_message_text(
+        summary,
+        parse_mode="HTML",
+        reply_markup=confirm_keyboard(),
+    )
+    return InteractionStates.FB_CONFIRM
+
+
+async def _fb_show_confirmation_msg(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Show confirmation summary (from text message)."""
+    ilog = context.user_data.get("ilog", {})
+    reasons_cache = await _get_reasons()
+    summary = _fb_build_summary(ilog, reasons_cache)
+
+    await update.message.reply_text(
+        summary,
+        parse_mode="HTML",
+        reply_markup=confirm_keyboard(),
+    )
+    return InteractionStates.FB_CONFIRM
+
+
+async def fb_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handle confirmation — submit the feedback ticket from /log flow."""
+    query = update.callback_query
+    await query.answer()
+
+    if query.data == "confirm_no":
+        await query.edit_message_text(cancelled(), parse_mode="HTML")
+        context.user_data.pop("ilog", None)
+        return ConversationHandler.END
+
+    ilog = context.user_data.get("ilog", {})
+
+    adm_id = ilog.get("adm_id", 0)
+    if not adm_id:
+        await query.edit_message_text(
+            f"{E_WARNING} <b>Session Error</b>\n\n"
+            f"Your ADM profile could not be found. Please use /start to register first.\n"
+            f"Aapka profile nahi mila. Pehle /start se register karein.",
+            parse_mode="HTML",
+        )
+        context.user_data.pop("ilog", None)
+        return ConversationHandler.END
+
+    payload = {
+        "agent_id": int(ilog.get("agent_id", 0)),
+        "adm_id": adm_id,
+        "channel": "telegram",
+        "selected_reason_codes": ilog.get("fb_selected_codes", []),
+        "raw_feedback_text": ilog.get("fb_free_text"),
+        "voice_file_id": ilog.get("fb_voice_file_id"),
+    }
+
+    result = await api_client.submit_feedback_ticket(payload)
+
+    if result.get("error"):
+        logger.warning("Feedback ticket submission from /log failed: %s", result)
+        await query.edit_message_text(
+            f"{E_WARNING} <b>Submission failed</b>\n\n"
+            f"Could not submit feedback. Please try again.\n"
+            f"Feedback submit nahi ho paya. Dobara try karein.\n\n"
+            f"<i>Error: {result.get('detail', 'Unknown error')}</i>",
+            parse_mode="HTML",
+        )
+        context.user_data.pop("ilog", None)
+        return ConversationHandler.END
+
+    # Success
+    tickets = result.get("tickets", [])
+    message = result.get("message", "Feedback submitted")
+
+    ticket_lines = []
+    for t in tickets:
+        tid = t.get("ticket_id", "?")
+        bucket_display = t.get("bucket_display", t.get("bucket", ""))
+        sla_hours = t.get("sla_hours", 48)
+        ticket_lines.append(f"  \U0001F3F7 <code>{tid}</code> \u2192 {bucket_display} (SLA: {sla_hours}h)")
+
+    tickets_text = "\n".join(ticket_lines) if ticket_lines else "Ticket created"
+
+    success_text = (
+        f"{E_CHECK} <b>Feedback Submitted!</b>\n"
+        f"{'=' * 30}\n\n"
+        f"{E_PERSON} Agent: <b>{ilog.get('agent_name', 'Agent')}</b>\n\n"
+        f"\U0001F4E8 <b>Tickets Created:</b>\n{tickets_text}\n\n"
+        f"\U0001F4AC {message}\n\n"
+        f"\u23F0 You'll be notified when the department responds with a\n"
+        f"communication script to use with the agent.\n\n"
+        f"<i>Jab department jawab dega, aapko ek script milega\n"
+        f"jo aap agent se baat karte waqt use kar sakte hain.</i>"
+    )
+
+    sent_msg = await query.edit_message_text(success_text, parse_mode="HTML")
+    await send_voice_response(sent_msg, success_text)
+
+    context.user_data.pop("ilog", None)
+    return ConversationHandler.END
+
+
 # ---------------------------------------------------------------------------
 # Cancel
 # ---------------------------------------------------------------------------
 
 async def cancel_interaction(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     context.user_data.pop("ilog", None)
+    context.user_data.pop("fb", None)
     if update.callback_query:
         await update.callback_query.answer()
         await update.callback_query.edit_message_text(cancelled(), parse_mode="HTML")
@@ -372,7 +805,7 @@ async def cancel_interaction(update: Update, context: ContextTypes.DEFAULT_TYPE)
 # ---------------------------------------------------------------------------
 
 def build_interaction_handler() -> ConversationHandler:
-    """Build the /log interaction conversation handler."""
+    """Build the /log interaction conversation handler with unified feedback + quick log."""
     return ConversationHandler(
         entry_points=[CommandHandler("log", log_command)],
         states={
@@ -380,6 +813,10 @@ def build_interaction_handler() -> ConversationHandler:
                 CallbackQueryHandler(select_agent, pattern=r"^iagent_"),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, search_agent_text),
             ],
+            InteractionStates.SELECT_TYPE: [
+                CallbackQueryHandler(select_type, pattern=r"^itype_"),
+            ],
+            # --- Quick Log path ---
             InteractionStates.SELECT_TOPIC: [
                 CallbackQueryHandler(select_topic, pattern=r"^topic_"),
             ],
@@ -396,6 +833,21 @@ def build_interaction_handler() -> ConversationHandler:
             ],
             InteractionStates.CONFIRM: [
                 CallbackQueryHandler(confirm_interaction, pattern=r"^confirm_"),
+            ],
+            # --- Feedback sub-flow path ---
+            InteractionStates.FB_SELECT_BUCKET: [
+                CallbackQueryHandler(fb_select_bucket, pattern=r"^fbucket_"),
+            ],
+            InteractionStates.FB_SELECT_REASONS: [
+                CallbackQueryHandler(fb_toggle_reason, pattern=r"^freason_"),
+            ],
+            InteractionStates.FB_ADD_NOTES: [
+                CallbackQueryHandler(fb_notes_callback, pattern=r"^fnotes_"),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, fb_receive_notes_text),
+                MessageHandler(filters.VOICE, fb_receive_notes_voice),
+            ],
+            InteractionStates.FB_CONFIRM: [
+                CallbackQueryHandler(fb_confirm, pattern=r"^confirm_"),
             ],
         },
         fallbacks=[

@@ -330,6 +330,9 @@ class FeedbackTicket(Base):
     adm_script_rating = Column(String(20), nullable=True)  # helpful | not_helpful
     adm_script_feedback = Column(Text, nullable=True)
 
+    # Voice note
+    voice_file_id = Column(String(200), nullable=True)  # Telegram voice note file ID
+
     # Related tickets (for multi-bucket or repeat cases)
     related_ticket_ids = Column(Text, nullable=True)  # JSON list of ticket IDs
     parent_ticket_id = Column(String(20), nullable=True)  # if this is a split ticket

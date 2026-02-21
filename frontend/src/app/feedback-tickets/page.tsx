@@ -288,7 +288,7 @@ function TicketCard({ ticket, expanded, onToggle, refetch }: {
     try {
       await api.respondToTicket(ticket.ticket_id || ticket.id, {
         response_text: responseText,
-        responder_name: 'Department Team',
+        responded_by: 'Department Team',
       });
       setResponseText('');
       setResponding(false);
@@ -411,14 +411,14 @@ function TicketCard({ ticket, expanded, onToggle, refetch }: {
           )}
 
           {/* Department Response */}
-          {ticket.department_response && (
+          {ticket.department_response_text && (
             <div>
               <p className="text-[11px] text-gray-500 mb-1">Department Response</p>
               <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-lg p-3">
-                <p className="text-sm text-emerald-300">{ticket.department_response}</p>
-                {ticket.responded_by && (
+                <p className="text-sm text-emerald-300">{ticket.department_response_text}</p>
+                {ticket.department_responded_by && (
                   <p className="text-[11px] text-gray-500 mt-1">
-                    By {ticket.responded_by} on {formatDate(ticket.responded_at)}
+                    By {ticket.department_responded_by} on {formatDate(ticket.department_responded_at)}
                   </p>
                 )}
               </div>
