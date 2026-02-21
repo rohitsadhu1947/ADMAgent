@@ -112,9 +112,11 @@ export default function FeedbackTicketsPage() {
     30000,
   );
   const { data: analytics, loading: analyticsLoading } = useAPI(() => api.getTicketAnalytics(), 60000);
-  const { data: alerts } = useAPI(() => api.getAggregationAlerts(), 60000);
+  const { data: alertsRaw } = useAPI(() => api.getAggregationAlerts(), 60000);
 
-  const tickets = ticketsRaw || [];
+  // Backend returns { tickets: [...], total } — extract the array
+  const tickets = Array.isArray(ticketsRaw) ? ticketsRaw : (ticketsRaw?.tickets || []);
+  const alerts = Array.isArray(alertsRaw) ? alertsRaw : (alertsRaw?.alerts || []);
 
   const tabs: { key: TabKey; label: string; icon: React.ElementType; count?: number }[] = [
     { key: 'queue', label: 'Ticket Queue', icon: Ticket, count: tickets.length },
@@ -542,7 +544,8 @@ function DepartmentView({ refetch }: { refetch: () => void }) {
     [selectedDept],
   );
 
-  const queue = queueData || [];
+  // Backend returns { tickets: [...], total, department } — extract the array
+  const queue = Array.isArray(queueData) ? queueData : (queueData?.tickets || []);
   const deptConfig = BUCKETS[selectedDept] || BUCKETS.operations;
   const DeptIcon = deptConfig.icon;
 
@@ -654,10 +657,11 @@ function AnalyticsTab({ analytics, loading, tickets }: { analytics: any; loading
     return <div className="flex items-center justify-center py-20"><Loader2 className="w-8 h-8 text-gray-500 animate-spin" /></div>;
   }
 
+  // Backend by_bucket format: { key: { count: N, display: "..." } } or { key: N }
   const bucketData = analytics.by_bucket
-    ? Object.entries(analytics.by_bucket).map(([key, count], i) => ({
-        name: BUCKETS[key]?.label || key,
-        value: count as number,
+    ? Object.entries(analytics.by_bucket).map(([key, val]: [string, any], i) => ({
+        name: BUCKETS[key]?.label || (typeof val === 'object' ? val.display : key),
+        value: (typeof val === 'object' ? val.count : val) as number,
         color: PIE_COLORS[i % PIE_COLORS.length],
       }))
     : [];
@@ -678,9 +682,13 @@ function AnalyticsTab({ analytics, loading, tickets }: { analytics: any; loading
       }))
     : [];
 
-  const topReasons = analytics.top_reasons || [];
-  const slaCompliance = analytics.sla_compliance || 0;
-  const totalTickets = tickets.length;
+  // Backend returns top_reason_codes: [{ code, count }] — map to expected format
+  const topReasons = (analytics.top_reason_codes || analytics.top_reasons || []).map((item: any) => ({
+    reason_code: item.reason_code || item.code || item.reason,
+    count: item.count || 0,
+  }));
+  const slaCompliance = analytics.sla_compliance_pct ?? analytics.sla_compliance ?? 0;
+  const totalTickets = analytics.total_tickets ?? tickets.length;
   const openTickets = tickets.filter((t: any) => !['closed', 'script_sent'].includes(t.status)).length;
   const avgResolution = analytics.avg_resolution_hours || 0;
 
@@ -875,11 +883,11 @@ function AlertsTab({ alerts }: { alerts: any[] }) {
               </div>
               <div>
                 <p className="text-[10px] text-gray-500 uppercase">Affected Tickets</p>
-                <p className="text-sm text-gray-200">{alert.affected_ticket_count || 0}</p>
+                <p className="text-sm text-gray-200">{alert.affected_ticket_count ?? alert.affected_agents_count ?? 0}</p>
               </div>
               <div>
                 <p className="text-[10px] text-gray-500 uppercase">Agents Impacted</p>
-                <p className="text-sm text-gray-200">{alert.affected_agent_count || 0}</p>
+                <p className="text-sm text-gray-200">{alert.affected_agent_count ?? alert.affected_adms_count ?? 0}</p>
               </div>
             </div>
 
