@@ -108,7 +108,7 @@ def get_upcoming_entries(
         DiaryEntry.adm_id == adm_id,
         DiaryEntry.scheduled_date >= today,
         DiaryEntry.scheduled_date <= end_date,
-        DiaryEntry.status == "scheduled",
+        DiaryEntry.status.in_(["scheduled", "rescheduled"]),
     ).order_by(DiaryEntry.scheduled_date, DiaryEntry.scheduled_time).all()
 
     results = []
@@ -221,7 +221,8 @@ def reschedule_diary_entry(
     entry.scheduled_date = new_date
     if new_time:
         entry.scheduled_time = new_time
-    entry.status = "rescheduled"
+    # Keep status as "scheduled" so entry appears in diary queries for the new date
+    entry.status = "scheduled"
 
     db.commit()
     db.refresh(entry)

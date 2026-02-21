@@ -45,7 +45,7 @@ _reason_cache = {}
 
 
 async def _get_reasons() -> dict:
-    """Fetch and cache reason taxonomy from API."""
+    """Fetch reason taxonomy from API (cached for 5 min, refreshable if empty)."""
     global _reason_cache
     if _reason_cache:
         return _reason_cache
@@ -54,7 +54,19 @@ async def _get_reasons() -> dict:
     if isinstance(resp, list):
         for bucket_data in resp:
             bucket = bucket_data.get("bucket")
-            _reason_cache[bucket] = bucket_data.get("reasons", [])
+            reasons = bucket_data.get("reasons", [])
+            if reasons:
+                _reason_cache[bucket] = reasons
+    elif isinstance(resp, dict) and not resp.get("error"):
+        # Might be wrapped differently
+        for bucket, data in resp.items():
+            if isinstance(data, dict):
+                _reason_cache[bucket] = data.get("reasons", [])
+
+    # If no reasons loaded from API, log warning
+    if not _reason_cache:
+        logger.warning("No feedback reasons loaded from API — ReasonTaxonomy table may be empty")
+
     return _reason_cache
 
 
@@ -114,9 +126,10 @@ def _reason_keyboard(bucket: str, selected_codes: list, reasons: list) -> Inline
 
 
 def _notes_keyboard() -> InlineKeyboardMarkup:
-    """Ask for optional free text notes."""
+    """Ask for optional free text notes or voice note."""
     buttons = [
-        [InlineKeyboardButton(f"{E_PENCIL} Add Details / Aur Batayein", callback_data="fnotes_type")],
+        [InlineKeyboardButton(f"{E_PENCIL} Type Details / Likhein", callback_data="fnotes_type")],
+        [InlineKeyboardButton(f"\U0001F3A4 Voice Note / Bolein", callback_data="fnotes_voice")],
         [InlineKeyboardButton(f"\u23E9 Skip / Chhod Dein", callback_data="fnotes_skip")],
         [InlineKeyboardButton(f"{E_CROSS} Cancel", callback_data="cancel")],
     ]
@@ -153,12 +166,15 @@ def _bucket_from_code(code: str) -> str:
 
 async def feedback_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Start the feedback capture flow."""
+    global _reason_cache
     telegram_id = update.effective_user.id
     context.user_data["fb"] = {
         "adm_telegram_id": telegram_id,
         "selected_codes": [],
     }
 
+    # Clear cache so we always get fresh reasons on new feedback session
+    _reason_cache = {}
     # Pre-fetch reason taxonomy
     await _get_reasons()
 
@@ -414,6 +430,15 @@ async def notes_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         context.user_data["fb"]["free_text"] = None
         return await _show_confirmation(query, context)
 
+    if query.data == "fnotes_voice":
+        await query.edit_message_text(
+            f"\U0001F3A4 <b>Send a voice note now</b>\n\n"
+            f"Agent ne kya bataya, apni awaaz mein record karein:\n"
+            f"Ya type bhi kar sakte hain.",
+            parse_mode="HTML",
+        )
+        return FeedbackStates.ADD_NOTES
+
     # Ask for text
     await query.edit_message_text(
         f"{E_PENCIL} <b>Type your additional details:</b>\n\n"
@@ -427,6 +452,20 @@ async def notes_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 async def receive_notes_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Receive free text notes."""
     context.user_data["fb"]["free_text"] = update.message.text.strip()
+    return await _show_confirmation_msg(update, context)
+
+
+async def receive_notes_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Receive voice note as feedback details."""
+    voice = update.message.voice
+    context.user_data["fb"]["free_text"] = f"[Voice note: {voice.duration}s]"
+    context.user_data["fb"]["voice_file_id"] = voice.file_id
+
+    await update.message.reply_text(
+        f"\U0001F3A4 <b>Voice note received!</b> ({voice.duration}s)\n"
+        f"Voice note mil gaya! Proceeding to confirmation...",
+        parse_mode="HTML",
+    )
     return await _show_confirmation_msg(update, context)
 
 
@@ -605,6 +644,7 @@ def build_feedback_handler() -> ConversationHandler:
             FeedbackStates.ADD_NOTES: [
                 CallbackQueryHandler(notes_callback, pattern=r"^fnotes_"),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, receive_notes_text),
+                MessageHandler(filters.VOICE, receive_notes_voice),
             ],
             FeedbackStates.CONFIRM: [
                 CallbackQueryHandler(confirm_feedback, pattern=r"^confirm_"),

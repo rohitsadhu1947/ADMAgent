@@ -576,19 +576,19 @@ def get_adm_diary(
     # Get overdue (past dates, not completed)
     overdue_entries = entries_query.filter(
         DiaryEntry.scheduled_date < target_date,
-        DiaryEntry.status.in_(["scheduled", "missed"]),
+        DiaryEntry.status.in_(["scheduled", "missed", "rescheduled"]),
     ).order_by(DiaryEntry.scheduled_date).all()
 
-    # Today's entries
+    # Today's entries (all statuses except completed shown)
     today_entries = entries_query.filter(
         DiaryEntry.scheduled_date == target_date,
     ).order_by(DiaryEntry.scheduled_time).all()
 
-    # Upcoming (next 7 days)
+    # Upcoming (next 7 days) — include both scheduled and rescheduled
     upcoming_entries = entries_query.filter(
         DiaryEntry.scheduled_date > target_date,
         DiaryEntry.scheduled_date <= target_date + timedelta(days=7),
-        DiaryEntry.status == "scheduled",
+        DiaryEntry.status.in_(["scheduled", "rescheduled"]),
     ).order_by(DiaryEntry.scheduled_date, DiaryEntry.scheduled_time).all()
 
     result_entries = []
@@ -708,7 +708,9 @@ def update_diary_entry_telegram(entry_id: str, data: dict, db: Session = Depends
     if data.get("date"):
         try:
             entry.scheduled_date = date.fromisoformat(data["date"])
-            entry.status = "rescheduled"
+            # Keep status as "scheduled" so it shows up in diary queries
+            # "rescheduled" status gets excluded from upcoming entries
+            entry.status = "scheduled"
         except ValueError:
             pass
 

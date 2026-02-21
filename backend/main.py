@@ -83,6 +83,19 @@ def run_seed_if_empty():
             logger.info(f"Database has {count} products. Skipping full seed.")
             # Still ensure key users exist even if products were already seeded
             _ensure_key_users(db)
+
+        # Always ensure ReasonTaxonomy is populated (needed for feedback workflow)
+        from models import ReasonTaxonomy
+        reason_count = db.query(ReasonTaxonomy).count()
+        if reason_count == 0:
+            logger.info("No ReasonTaxonomy entries found. Seeding feedback reasons...")
+            from seed_data import REASON_TAXONOMY
+            for r_data in REASON_TAXONOMY:
+                db.add(ReasonTaxonomy(**r_data))
+            db.commit()
+            logger.info(f"Seeded {len(REASON_TAXONOMY)} feedback reason taxonomy entries.")
+        else:
+            logger.info(f"ReasonTaxonomy has {reason_count} entries. OK.")
     except Exception as e:
         logger.error(f"Error during seeding: {e}")
         db.rollback()

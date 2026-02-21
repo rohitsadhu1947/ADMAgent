@@ -163,6 +163,35 @@ async def select_agent(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
 
 
 # ---------------------------------------------------------------------------
+# Step 1b: Agent search (text input)
+# ---------------------------------------------------------------------------
+
+async def search_agent_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handle free-text search for agents in the /log flow."""
+    search_text = update.message.text.strip()
+    telegram_id = update.effective_user.id
+
+    agents_resp = await api_client.get_assigned_agents(telegram_id, search=search_text)
+    agents = agents_resp.get("agents", agents_resp.get("data", []))
+
+    if not agents or agents_resp.get("error"):
+        await update.message.reply_text(
+            f"{E_CROSS} No agents found for \"{search_text}\".\n"
+            f"Koi agent nahi mila. Try again or /cancel.",
+            parse_mode="HTML",
+        )
+        return InteractionStates.SELECT_AGENT
+
+    context.user_data["ilog"]["agents_cache"] = agents
+    await update.message.reply_text(
+        f"\U0001F50D Results for \"{search_text}\":",
+        parse_mode="HTML",
+        reply_markup=agent_list_keyboard(agents, callback_prefix="iagent", show_search=False),
+    )
+    return InteractionStates.SELECT_AGENT
+
+
+# ---------------------------------------------------------------------------
 # Step 2: Topic
 # ---------------------------------------------------------------------------
 
@@ -349,6 +378,7 @@ def build_interaction_handler() -> ConversationHandler:
         states={
             InteractionStates.SELECT_AGENT: [
                 CallbackQueryHandler(select_agent, pattern=r"^iagent_"),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, search_agent_text),
             ],
             InteractionStates.SELECT_TOPIC: [
                 CallbackQueryHandler(select_topic, pattern=r"^topic_"),
