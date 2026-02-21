@@ -387,7 +387,7 @@ function TicketCard({ ticket, expanded, onToggle, refetch }: {
           </div>
 
           {/* Secondary Reason Codes */}
-          {ticket.secondary_reason_codes && ticket.secondary_reason_codes.length > 0 && (
+          {Array.isArray(ticket.secondary_reason_codes) && ticket.secondary_reason_codes.length > 0 && (
             <div>
               <p className="text-[11px] text-gray-500 mb-1">Secondary Reasons</p>
               <div className="flex flex-wrap gap-1">
