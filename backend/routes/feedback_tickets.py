@@ -10,10 +10,12 @@ import logging
 from datetime import datetime
 from typing import Optional, List
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc
 
+from config import settings
 from database import get_db
 from models import (
     FeedbackTicket, DepartmentQueue, ReasonTaxonomy,
@@ -28,6 +30,55 @@ from schemas import (
 from services.feedback_classifier import feedback_classifier, BUCKET_DISPLAY_NAMES
 
 logger = logging.getLogger(__name__)
+
+
+async def _push_script_to_adm(ticket: FeedbackTicket, script: str, db: Session):
+    """Send the generated communication script to the ADM via Telegram."""
+    token = settings.TELEGRAM_BOT_TOKEN
+    if not token:
+        logger.warning("TELEGRAM_BOT_TOKEN not set — cannot push script to ADM")
+        return
+
+    adm = db.query(ADM).filter(ADM.id == ticket.adm_id).first()
+    if not adm or not adm.telegram_chat_id:
+        logger.warning(f"ADM {ticket.adm_id} has no telegram_chat_id — cannot push script")
+        return
+
+    agent = db.query(Agent).filter(Agent.id == ticket.agent_id).first()
+    agent_name = agent.name if agent else "Agent"
+    bucket_label = BUCKET_DISPLAY_NAMES.get(ticket.bucket, ticket.bucket or "")
+
+    message = (
+        f"📋 *Response Ready — {ticket.ticket_id}*\n\n"
+        f"*Agent:* {agent_name}\n"
+        f"*Department:* {bucket_label}\n"
+        f"*Reason:* {ticket.reason_code or '—'}\n\n"
+        f"📝 *Communication Script:*\n\n"
+        f"{script}\n\n"
+        f"_Use this script when speaking to the agent. "
+        f"Reply /feedback to submit new feedback._"
+    )
+
+    url = f"https://api.telegram.org/bot{token}/sendMessage"
+    payload = {
+        "chat_id": adm.telegram_chat_id,
+        "text": message,
+        "parse_mode": "Markdown",
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.post(url, json=payload)
+            if resp.status_code == 200:
+                # Mark script as sent
+                ticket.script_sent_at = datetime.utcnow()
+                ticket.status = "script_sent"
+                db.commit()
+                logger.info(f"Script pushed to ADM {adm.id} for ticket {ticket.ticket_id}")
+            else:
+                logger.error(f"Telegram send failed ({resp.status_code}): {resp.text}")
+    except Exception as e:
+        logger.error(f"Error pushing script to ADM: {e}")
 
 router = APIRouter(prefix="/feedback-tickets", tags=["Feedback Tickets"])
 
@@ -335,6 +386,126 @@ def list_tickets(
     }
 
 
+# ---------------------------------------------------------------------------
+# Department queue view (must be before /{ticket_id} catch-all)
+# ---------------------------------------------------------------------------
+
+@router.get("/queue/{department}")
+def department_queue(
+    department: str,
+    status: Optional[str] = Query(None),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
+    db: Session = Depends(get_db),
+):
+    """Get department's ticket queue with SLA status."""
+    query = db.query(DepartmentQueue).filter(DepartmentQueue.department == department)
+    if status:
+        query = query.filter(DepartmentQueue.status == status)
+
+    total = query.count()
+    entries = query.order_by(DepartmentQueue.created_at.desc()).offset(skip).limit(limit).all()
+
+    result = []
+    for entry in entries:
+        ticket = db.query(FeedbackTicket).filter(FeedbackTicket.id == entry.ticket_id).first()
+        if ticket:
+            enriched = _enrich_ticket(ticket, db)
+            enriched["queue_status"] = entry.status
+            enriched["queue_sla_status"] = entry.sla_status
+            enriched["escalation_level"] = entry.escalation_level
+            enriched["assigned_to"] = entry.assigned_to
+            result.append(enriched)
+
+    return {"tickets": result, "total": total, "department": department}
+
+
+# ---------------------------------------------------------------------------
+# Analytics (must be before /{ticket_id} catch-all)
+# ---------------------------------------------------------------------------
+
+@router.get("/analytics/summary")
+def ticket_analytics(
+    adm_id: Optional[int] = None,
+    db: Session = Depends(get_db),
+):
+    """Get feedback ticket analytics."""
+    base = db.query(FeedbackTicket)
+    if adm_id:
+        base = base.filter(FeedbackTicket.adm_id == adm_id)
+
+    total = base.count()
+
+    by_bucket = dict(
+        base.with_entities(FeedbackTicket.bucket, func.count(FeedbackTicket.id))
+        .group_by(FeedbackTicket.bucket).all()
+    )
+    by_priority = dict(
+        base.with_entities(FeedbackTicket.priority, func.count(FeedbackTicket.id))
+        .group_by(FeedbackTicket.priority).all()
+    )
+    by_status = dict(
+        base.with_entities(FeedbackTicket.status, func.count(FeedbackTicket.id))
+        .group_by(FeedbackTicket.status).all()
+    )
+
+    # SLA compliance
+    resolved = base.filter(FeedbackTicket.department_responded_at.isnot(None)).all()
+    sla_met = sum(
+        1 for t in resolved
+        if t.sla_deadline and t.department_responded_at and t.department_responded_at <= t.sla_deadline
+    )
+    sla_compliance = round(sla_met / len(resolved) * 100, 1) if resolved else 0.0
+
+    # Avg resolution time
+    avg_hours = None
+    if resolved:
+        total_hours = sum(
+            (t.department_responded_at - t.created_at).total_seconds() / 3600
+            for t in resolved if t.department_responded_at and t.created_at
+        )
+        avg_hours = round(total_hours / len(resolved), 1)
+
+    # Top reason codes
+    top_reasons = (
+        base.with_entities(FeedbackTicket.reason_code, func.count(FeedbackTicket.id).label("cnt"))
+        .filter(FeedbackTicket.reason_code.isnot(None))
+        .group_by(FeedbackTicket.reason_code)
+        .order_by(func.count(FeedbackTicket.id).desc())
+        .limit(10).all()
+    )
+
+    return {
+        "total_tickets": total,
+        "by_bucket": {k: {"count": v, "display": BUCKET_DISPLAY_NAMES.get(k, k)} for k, v in by_bucket.items()},
+        "by_priority": by_priority,
+        "by_status": by_status,
+        "sla_compliance_pct": sla_compliance,
+        "avg_resolution_hours": avg_hours,
+        "top_reason_codes": [{"code": code, "count": cnt} for code, cnt in top_reasons],
+    }
+
+
+# ---------------------------------------------------------------------------
+# Aggregation alerts (must be before /{ticket_id} catch-all)
+# ---------------------------------------------------------------------------
+
+@router.get("/alerts")
+def list_alerts(
+    status: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+):
+    """List aggregation/pattern alerts."""
+    query = db.query(AggregationAlert)
+    if status:
+        query = query.filter(AggregationAlert.status == status)
+    return query.order_by(desc(AggregationAlert.created_at)).limit(50).all()
+
+
+# ---------------------------------------------------------------------------
+# Single ticket by ID (catch-all — MUST be after all fixed-path routes)
+# ---------------------------------------------------------------------------
+
 @router.get("/{ticket_id}")
 def get_ticket(ticket_id: str, db: Session = Depends(get_db)):
     """Get a single ticket by ticket_id (e.g., FB-2026-00001)."""
@@ -402,6 +573,10 @@ async def department_respond(
     db.commit()
     db.refresh(ticket)
 
+    # Push script to ADM via Telegram
+    await _push_script_to_adm(ticket, script, db)
+    db.refresh(ticket)
+
     return {
         "ticket": _enrich_ticket(ticket, db),
         "script": script,
@@ -451,122 +626,6 @@ def rate_script(
         ticket.status = "closed"
     db.commit()
     return {"status": "ok", "ticket_id": ticket_id}
-
-
-# ---------------------------------------------------------------------------
-# Department queue view
-# ---------------------------------------------------------------------------
-
-@router.get("/queue/{department}")
-def department_queue(
-    department: str,
-    status: Optional[str] = Query(None),
-    skip: int = Query(0, ge=0),
-    limit: int = Query(50, ge=1, le=200),
-    db: Session = Depends(get_db),
-):
-    """Get department's ticket queue with SLA status."""
-    query = db.query(DepartmentQueue).filter(DepartmentQueue.department == department)
-    if status:
-        query = query.filter(DepartmentQueue.status == status)
-
-    total = query.count()
-    entries = query.order_by(DepartmentQueue.created_at.desc()).offset(skip).limit(limit).all()
-
-    result = []
-    for entry in entries:
-        ticket = db.query(FeedbackTicket).filter(FeedbackTicket.id == entry.ticket_id).first()
-        if ticket:
-            enriched = _enrich_ticket(ticket, db)
-            enriched["queue_status"] = entry.status
-            enriched["queue_sla_status"] = entry.sla_status
-            enriched["escalation_level"] = entry.escalation_level
-            enriched["assigned_to"] = entry.assigned_to
-            result.append(enriched)
-
-    return {"tickets": result, "total": total, "department": department}
-
-
-# ---------------------------------------------------------------------------
-# Analytics
-# ---------------------------------------------------------------------------
-
-@router.get("/analytics/summary")
-def ticket_analytics(
-    adm_id: Optional[int] = None,
-    db: Session = Depends(get_db),
-):
-    """Get feedback ticket analytics."""
-    base = db.query(FeedbackTicket)
-    if adm_id:
-        base = base.filter(FeedbackTicket.adm_id == adm_id)
-
-    total = base.count()
-
-    by_bucket = dict(
-        base.with_entities(FeedbackTicket.bucket, func.count(FeedbackTicket.id))
-        .group_by(FeedbackTicket.bucket).all()
-    )
-    by_priority = dict(
-        base.with_entities(FeedbackTicket.priority, func.count(FeedbackTicket.id))
-        .group_by(FeedbackTicket.priority).all()
-    )
-    by_status = dict(
-        base.with_entities(FeedbackTicket.status, func.count(FeedbackTicket.id))
-        .group_by(FeedbackTicket.status).all()
-    )
-
-    # SLA compliance
-    resolved = base.filter(FeedbackTicket.department_responded_at.isnot(None)).all()
-    sla_met = sum(
-        1 for t in resolved
-        if t.sla_deadline and t.department_responded_at and t.department_responded_at <= t.sla_deadline
-    )
-    sla_compliance = round(sla_met / len(resolved) * 100, 1) if resolved else 0.0
-
-    # Avg resolution time
-    avg_hours = None
-    if resolved:
-        total_hours = sum(
-            (t.department_responded_at - t.created_at).total_seconds() / 3600
-            for t in resolved if t.department_responded_at and t.created_at
-        )
-        avg_hours = round(total_hours / len(resolved), 1)
-
-    # Top reason codes
-    top_reasons = (
-        base.with_entities(FeedbackTicket.reason_code, func.count(FeedbackTicket.id).label("cnt"))
-        .filter(FeedbackTicket.reason_code.isnot(None))
-        .group_by(FeedbackTicket.reason_code)
-        .order_by(func.count(FeedbackTicket.id).desc())
-        .limit(10).all()
-    )
-
-    return {
-        "total_tickets": total,
-        "by_bucket": {k: {"count": v, "display": BUCKET_DISPLAY_NAMES.get(k, k)} for k, v in by_bucket.items()},
-        "by_priority": by_priority,
-        "by_status": by_status,
-        "sla_compliance_pct": sla_compliance,
-        "avg_resolution_hours": avg_hours,
-        "top_reason_codes": [{"code": code, "count": cnt} for code, cnt in top_reasons],
-    }
-
-
-# ---------------------------------------------------------------------------
-# Aggregation alerts
-# ---------------------------------------------------------------------------
-
-@router.get("/alerts")
-def list_alerts(
-    status: Optional[str] = Query(None),
-    db: Session = Depends(get_db),
-):
-    """List aggregation/pattern alerts."""
-    query = db.query(AggregationAlert)
-    if status:
-        query = query.filter(AggregationAlert.status == status)
-    return query.order_by(desc(AggregationAlert.created_at)).limit(50).all()
 
 
 # ---------------------------------------------------------------------------
