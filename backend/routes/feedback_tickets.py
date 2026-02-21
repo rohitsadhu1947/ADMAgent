@@ -5,9 +5,10 @@ Handles ticket submission, classification, department response,
 script generation, and delivery.
 """
 
+import asyncio
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional, List
 
 import httpx
@@ -245,6 +246,98 @@ async def submit_feedback_ticket(
             detail="Provide at least one reason code or feedback text",
         )
 
+    # ---------------------------------------------------------------
+    # Duplicate ticket prevention: check for existing open ticket
+    # for the same agent_id + adm_id + bucket (determined from reason
+    # codes or, if none, deferred until after classification).
+    # ---------------------------------------------------------------
+
+    # Pre-determine bucket from selected reason codes so we can check
+    # before running classification (which costs an AI call).
+    candidate_bucket = None
+    if data.selected_reason_codes:
+        candidate_bucket = feedback_classifier._bucket_from_code(data.selected_reason_codes[0])
+
+    # Only proceed with dedup check if we have a candidate bucket
+    # (from reason codes). If not, we'll check after classification.
+    thirty_days_ago = datetime.utcnow() - timedelta(days=30)
+
+    def _find_open_ticket(bucket_to_check: str) -> Optional[FeedbackTicket]:
+        """Find an existing open ticket for this agent+adm+bucket within 30 days."""
+        return (
+            db.query(FeedbackTicket)
+            .filter(
+                FeedbackTicket.agent_id == data.agent_id,
+                FeedbackTicket.adm_id == data.adm_id,
+                FeedbackTicket.bucket == bucket_to_check,
+                FeedbackTicket.status != "closed",
+                FeedbackTicket.created_at >= thirty_days_ago,
+            )
+            .order_by(desc(FeedbackTicket.created_at))
+            .first()
+        )
+
+    def _add_followup_to_ticket(existing: FeedbackTicket) -> dict:
+        """Append follow-up feedback to an existing open ticket."""
+        timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
+        new_text = data.raw_feedback_text or ""
+
+        # Append to raw_feedback_text
+        if existing.raw_feedback_text:
+            existing.raw_feedback_text = (
+                existing.raw_feedback_text
+                + f"\n---\nFollow-up ({timestamp}):\n{new_text}"
+            )
+        else:
+            existing.raw_feedback_text = new_text
+
+        # Merge new reason codes into selected_reasons
+        if data.selected_reason_codes:
+            current_reasons = (
+                json.loads(existing.selected_reasons)
+                if existing.selected_reasons
+                else []
+            )
+            merged = list(current_reasons)
+            for code in data.selected_reason_codes:
+                if code not in merged:
+                    merged.append(code)
+            existing.selected_reasons = json.dumps(merged)
+
+        # Reset status to "received" so department sees it again
+        existing.status = "received"
+
+        # Reset SLA deadline
+        sla_hours = feedback_classifier.get_sla_hours(
+            existing.bucket, existing.priority or "medium"
+        )
+        existing.sla_deadline = datetime.utcnow() + timedelta(hours=sla_hours)
+
+        # Update the queue entry status back to open
+        queue = db.query(DepartmentQueue).filter(
+            DepartmentQueue.ticket_id == existing.id
+        ).first()
+        if queue:
+            queue.status = "open"
+            queue.sla_status = "on_track"
+
+        existing.updated_at = datetime.utcnow()
+        db.commit()
+        db.refresh(existing)
+
+        return {
+            "tickets": [_enrich_ticket(existing, db)],
+            "message": f"Follow-up added to existing ticket {existing.ticket_id}",
+            "is_followup": True,
+            "original_ticket_id": existing.ticket_id,
+        }
+
+    # If we already know the bucket from reason codes, check now
+    if candidate_bucket:
+        existing_ticket = _find_open_ticket(candidate_bucket)
+        if existing_ticket:
+            return _add_followup_to_ticket(existing_ticket)
+
     # Classify
     classification = await feedback_classifier.classify_feedback(
         raw_text=data.raw_feedback_text or "",
@@ -253,6 +346,13 @@ async def submit_feedback_ticket(
         agent_location=agent.location,
         agent_state=agent.lifecycle_state,
     )
+
+    # If we didn't have reason codes, check for duplicate now using
+    # the AI-classified bucket
+    if not candidate_bucket:
+        existing_ticket = _find_open_ticket(classification["bucket"])
+        if existing_ticket:
+            return _add_followup_to_ticket(existing_ticket)
 
     # Check for multi-bucket — split into separate tickets
     tickets_created = []
@@ -557,16 +657,28 @@ async def department_respond(
 
     db.commit()
 
-    # Generate communication script
+    # Generate communication script (with timeout to avoid Railway request timeout)
     agent = db.query(Agent).filter(Agent.id == ticket.agent_id).first()
-    script = await feedback_classifier.generate_script(
-        agent_name=agent.name if agent else "Agent",
-        original_feedback=ticket.raw_feedback_text or ticket.parsed_summary or "",
-        reason_code=ticket.reason_code or "",
-        bucket=ticket.bucket,
-        department_response=data.response_text,
-        agent_location=agent.location if agent else "",
-    )
+    try:
+        script = await asyncio.wait_for(
+            feedback_classifier.generate_script(
+                agent_name=agent.name if agent else "Agent",
+                original_feedback=ticket.raw_feedback_text or ticket.parsed_summary or "",
+                reason_code=ticket.reason_code or "",
+                bucket=ticket.bucket,
+                department_response=data.response_text,
+                agent_location=agent.location if agent else "",
+            ),
+            timeout=25.0,  # 25 seconds max for AI generation
+        )
+    except asyncio.TimeoutError:
+        logger.warning(f"AI script generation timed out for {ticket.ticket_id}, using template")
+        script = feedback_classifier._template_script(
+            agent_name=agent.name if agent else "Agent",
+            original_feedback=ticket.raw_feedback_text or ticket.parsed_summary or "",
+            bucket=ticket.bucket,
+            department_response=data.response_text,
+        )
 
     ticket.generated_script = script
     ticket.status = "script_generated"

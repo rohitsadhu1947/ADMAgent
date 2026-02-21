@@ -174,9 +174,9 @@ Priority rules:
 - medium: Single agent issue, moderate concern
 - low: Informational, one-off, agent still engaged"""
 
-        client = anthropic.Anthropic(api_key=self.api_key)
-        message = client.messages.create(
-            model="claude-sonnet-4-20250514",
+        client = anthropic.AsyncAnthropic(api_key=self.api_key)
+        message = await client.messages.create(
+            model="claude-3-5-haiku-20241022",
             max_tokens=512,
             messages=[{"role": "user", "content": prompt}],
         )
@@ -352,9 +352,9 @@ Write in a conversational Indian English/Hindi mix style (Hinglish).
 Use the agent's name naturally. Be empathetic but professional.
 Keep it practical and actionable."""
 
-        client = anthropic.Anthropic(api_key=self.api_key)
-        message = client.messages.create(
-            model="claude-sonnet-4-20250514",
+        client = anthropic.AsyncAnthropic(api_key=self.api_key)
+        message = await client.messages.create(
+            model="claude-3-5-haiku-20241022",
             max_tokens=1500,
             messages=[{"role": "user", "content": prompt}],
         )
