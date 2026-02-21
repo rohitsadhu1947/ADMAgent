@@ -1,11 +1,12 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { Search, Filter, Users, UserCheck, AlertTriangle, Phone, Eye } from 'lucide-react';
+import { Search, Filter, Users, UserCheck, AlertTriangle, Phone, Eye, Upload } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAPI } from '@/lib/useAPI';
 import StatusBadge from '@/components/StatusBadge';
 import AgentDetailPanel from '@/components/AgentDetailPanel';
+import BulkAgentImportModal from '@/components/BulkAgentImportModal';
 
 const dormancyReasonLabels: Record<string, string> = {
   no_leads: 'No Quality Leads',
@@ -19,7 +20,7 @@ const dormancyReasonLabels: Record<string, string> = {
 };
 
 export default function AgentsPage() {
-  const { data: apiAgents, loading } = useAPI(() => api.listAgents({ limit: '200' }));
+  const { data: apiAgents, loading, refetch } = useAPI(() => api.listAgents({ limit: '200' }));
   const { data: apiADMs } = useAPI(() => api.listADMs());
   const agents = apiAgents || [];
   const adms = apiADMs || [];
@@ -30,6 +31,7 @@ export default function AgentsPage() {
   const [reasonFilter, setReasonFilter] = useState<string>('all');
   const [selectedAgent, setSelectedAgent] = useState<any | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
+  const [showBulkImport, setShowBulkImport] = useState(false);
   const pageSize = 10;
 
   const admMap = useMemo(() => {
@@ -85,11 +87,20 @@ export default function AgentsPage() {
   return (
     <div className="space-y-6 animate-fade-in">
       {/* Page Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-white">Agent Management</h1>
-        <p className="text-sm text-gray-400 mt-1">
-          Monitor and manage agent lifecycle across all regions
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-white">Agent Management</h1>
+          <p className="text-sm text-gray-400 mt-1">
+            Monitor and manage agent lifecycle across all regions
+          </p>
+        </div>
+        <button
+          onClick={() => setShowBulkImport(true)}
+          className="flex items-center gap-2 px-4 py-2 bg-surface-card border border-surface-border text-gray-300 hover:text-white hover:border-brand-red/30 rounded-lg text-sm font-medium transition-all"
+        >
+          <Upload className="w-4 h-4" />
+          Bulk Import
+        </button>
       </div>
 
       {/* Stats Bar */}
@@ -332,6 +343,14 @@ export default function AgentsPage() {
           onClose={() => setSelectedAgent(null)}
         />
       )}
+
+      {/* Bulk Import Modal */}
+      <BulkAgentImportModal
+        mode="admin"
+        isOpen={showBulkImport}
+        onClose={() => setShowBulkImport(false)}
+        onSuccess={() => refetch()}
+      />
     </div>
   );
 }

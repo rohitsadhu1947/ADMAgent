@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { Search, Phone, CalendarDays, Eye, Users, UserCheck, AlertTriangle, PhoneCall, UserPlus, X, Plus } from 'lucide-react';
+import { Search, Phone, CalendarDays, Eye, Users, UserCheck, AlertTriangle, PhoneCall, UserPlus, X, Plus, Upload } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAPI } from '@/lib/useAPI';
 import { useAuth } from '@/lib/AuthContext';
@@ -10,6 +10,7 @@ import StatusBadge from '@/components/StatusBadge';
 import AgentDetailPanel from '@/components/AgentDetailPanel';
 import LogInteractionModal from '@/components/LogInteractionModal';
 import ScheduleFollowupModal from '@/components/ScheduleFollowupModal';
+import BulkAgentImportModal from '@/components/BulkAgentImportModal';
 
 export default function MyAgentsPage() {
   const { user, isADM } = useAuth();
@@ -38,6 +39,7 @@ export default function MyAgentsPage() {
   const [addAgentLoading, setAddAgentLoading] = useState(false);
   const [addAgentError, setAddAgentError] = useState('');
   const [addAgentSuccess, setAddAgentSuccess] = useState('');
+  const [showBulkImport, setShowBulkImport] = useState(false);
   const pageSize = 10;
 
   // Sync stateFilter with URL param when it changes
@@ -142,13 +144,22 @@ export default function MyAgentsPage() {
             Manage and take action on your assigned agents
           </p>
         </div>
-        <button
-          onClick={() => { setShowAddAgent(true); setAddAgentError(''); setAddAgentSuccess(''); }}
-          className="flex items-center gap-2 px-4 py-2 bg-brand-red hover:bg-brand-red/90 text-white rounded-lg text-sm font-medium transition-all"
-        >
-          <UserPlus className="w-4 h-4" />
-          Add Agent
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowBulkImport(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-surface-card border border-surface-border text-gray-300 hover:text-white hover:border-brand-red/30 rounded-lg text-sm font-medium transition-all"
+          >
+            <Upload className="w-4 h-4" />
+            Bulk Import
+          </button>
+          <button
+            onClick={() => { setShowAddAgent(true); setAddAgentError(''); setAddAgentSuccess(''); }}
+            className="flex items-center gap-2 px-4 py-2 bg-brand-red hover:bg-brand-red/90 text-white rounded-lg text-sm font-medium transition-all"
+          >
+            <UserPlus className="w-4 h-4" />
+            Add Agent
+          </button>
+        </div>
       </div>
 
       {/* Stats Bar */}
@@ -424,6 +435,14 @@ export default function MyAgentsPage() {
           }}
         />
       )}
+
+      {/* Bulk Import Modal */}
+      <BulkAgentImportModal
+        mode="adm"
+        isOpen={showBulkImport}
+        onClose={() => setShowBulkImport(false)}
+        onSuccess={() => refetch()}
+      />
 
       {/* Add Agent Modal */}
       {showAddAgent && (
