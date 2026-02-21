@@ -51,136 +51,6 @@ CATEGORY_MAP = {
     "tcat_group": ("Group Insurance", "group"),
 }
 
-# ---------------------------------------------------------------------------
-# Demo / fallback data when API is unreachable
-# ---------------------------------------------------------------------------
-DEMO_PRODUCTS = {
-    "term": [
-        {"id": "term_smart", "name": "Smart Term Plan", "category": "Term Insurance"},
-        {"id": "term_flexi", "name": "Flexi Term Plan", "category": "Term Insurance"},
-        {"id": "term_plus", "name": "Term Plus Protect", "category": "Term Insurance"},
-    ],
-    "savings": [
-        {"id": "sav_guaranteed", "name": "Guaranteed Savings Plan", "category": "Savings Plans"},
-        {"id": "sav_wealth", "name": "Wealth Builder Plus", "category": "Savings Plans"},
-        {"id": "sav_endow", "name": "Endowment Advantage", "category": "Savings Plans"},
-    ],
-    "ulip": [
-        {"id": "ulip_grow", "name": "Growth Maximiser ULIP", "category": "ULIPs"},
-        {"id": "ulip_balance", "name": "Balanced Fund ULIP", "category": "ULIPs"},
-        {"id": "ulip_secure", "name": "Secure Growth ULIP", "category": "ULIPs"},
-    ],
-    "pension": [
-        {"id": "pen_assured", "name": "Assured Pension Plan", "category": "Pension Plans"},
-        {"id": "pen_lifetime", "name": "Lifetime Income Plan", "category": "Pension Plans"},
-    ],
-    "child": [
-        {"id": "child_future", "name": "Bright Future Child Plan", "category": "Child Plans"},
-        {"id": "child_edu", "name": "Education Advantage Plan", "category": "Child Plans"},
-    ],
-    "group": [
-        {"id": "grp_term", "name": "Group Term Life", "category": "Group Insurance"},
-        {"id": "grp_health", "name": "Group Health Shield", "category": "Group Insurance"},
-    ],
-}
-
-DEMO_SUMMARIES = {
-    "term_smart": {
-        "name": "Smart Term Plan",
-        "category": "Term Insurance",
-        "key_features": [
-            "Pure protection plan with affordable premiums",
-            "Coverage up to Rs 1 Crore starting at Rs 595/month",
-            "Option to increase cover at key life milestones",
-            "Terminal illness benefit included",
-        ],
-        "target_audience": "Young working professionals (25-40 years) with family responsibilities, looking for high coverage at low cost.",
-        "usps": [
-            "Lowest premium in the term insurance category",
-            "Flexible payout options - Lump sum, Monthly Income, or Both",
-            "Waiver of Premium on critical illness diagnosis",
-        ],
-        "common_objections": [
-            {
-                "objection": "Term plan mein paisa wapas nahi milta (No money back in term plans)",
-                "response": "Sir/Ma'am, term plan ka purpose pure protection hai. Rs 595/month mein Rs 1 Crore ka cover milta hai. Savings ke liye alag plan le sakte hain, but family ki suraksha pehle!",
-            },
-            {
-                "objection": "I already have insurance from my company",
-                "response": "Company insurance sirf job tak hai. Job change ya retirement ke baad cover khatam. Personal term plan lifetime protection deta hai at today's low rate.",
-            },
-            {
-                "objection": "I am young and healthy, I don't need insurance now",
-                "response": "Yahi sahi time hai! Young age mein premium bahut kam hota hai. 30 saal mein lene par Rs 595/month, but 40 mein yahi plan Rs 1,200+ hoga.",
-            },
-        ],
-    },
-    "term_flexi": {
-        "name": "Flexi Term Plan",
-        "category": "Term Insurance",
-        "key_features": [
-            "Flexible premium payment terms (5, 10, 15, or 20 years)",
-            "Coverage continues even after premium payment period ends",
-            "Accidental death benefit rider available",
-            "Tax benefits under Section 80C and 10(10D)",
-        ],
-        "target_audience": "Self-employed professionals and business owners (30-50 years) who prefer flexible payment schedules.",
-        "usps": [
-            "Pay for limited years, stay covered for life",
-            "Premium holiday option during financial stress",
-            "Joint life cover available for couples",
-        ],
-        "common_objections": [
-            {
-                "objection": "Premium zyada hai regular term plan se (Premium is higher than regular term)",
-                "response": "Haan, but aap sirf 10-15 saal pay karte hain, cover lifetime milta hai. Total cost calculate karein toh almost same hai, plus peace of mind!",
-            },
-        ],
-    },
-}
-
-DEMO_QUIZZES = {
-    "term_smart": {
-        "questions": [
-            {
-                "question": "Smart Term Plan mein minimum coverage kitni hai?",
-                "options": ["Rs 25 Lakh", "Rs 50 Lakh", "Rs 1 Crore", "Rs 10 Lakh"],
-                "correct": 1,
-            },
-            {
-                "question": "Smart Term Plan ka premium Rs 1 Crore cover ke liye kitna hai per month?",
-                "options": ["Rs 995", "Rs 595", "Rs 1,295", "Rs 395"],
-                "correct": 1,
-            },
-            {
-                "question": "Term plan mein kya milta hai agar policyholder survive kare?",
-                "options": ["Full premium refund", "Maturity benefit", "Nothing - it's pure protection", "Half premium refund"],
-                "correct": 2,
-            },
-        ],
-    },
-}
-
-# Default quiz for products without specific quiz data
-DEFAULT_QUIZ = {
-    "questions": [
-        {
-            "question": "Life insurance ka primary purpose kya hai?",
-            "options": ["Wealth creation", "Family protection", "Tax saving", "Investment returns"],
-            "correct": 1,
-        },
-        {
-            "question": "Insurance claim ke liye kaunsa document sabse zaroori hai?",
-            "options": ["PAN Card", "Policy document & Death certificate", "Aadhar Card", "Bank statement"],
-            "correct": 1,
-        },
-        {
-            "question": "Free-look period kitne din ka hota hai?",
-            "options": ["7 days", "15 days", "30 days", "45 days"],
-            "correct": 1,
-        },
-    ],
-}
 
 
 # ---------------------------------------------------------------------------
@@ -193,8 +63,10 @@ async def train_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
 
     profile = await api_client.get_adm_profile(telegram_id)
     if not profile or profile.get("error"):
-        # Allow training even without registration (demo mode)
-        pass
+        await update.message.reply_text(
+            error_not_registered(), parse_mode="HTML",
+        )
+        return ConversationHandler.END
 
     train_intro = (
         f"{E_BOOK} <b>Product Training / Praduct Training</b>\n\n"
@@ -240,12 +112,9 @@ async def select_category(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     cat_label, cat_key = CATEGORY_MAP[data]
     context.user_data["train"] = {"category": cat_key, "category_label": cat_label}
 
-    # Try API first, fall back to demo data
+    # Fetch products from backend API
     products_resp = await api_client.get_training_products(cat_key)
     products = products_resp.get("products", products_resp.get("data", []))
-
-    if not products or products_resp.get("error"):
-        products = DEMO_PRODUCTS.get(cat_key, [])
 
     if not products:
         await query.edit_message_text(
@@ -319,41 +188,18 @@ async def select_product(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         parse_mode="HTML",
     )
 
-    # Try API first, fall back to demo data
+    # Fetch product summary from backend API
     summary_resp = await api_client.get_product_summary(product_id)
     summary_data = summary_resp if not summary_resp.get("error") else None
 
-    if not summary_data or summary_resp.get("error"):
-        summary_data = DEMO_SUMMARIES.get(product_id)
-
     if not summary_data:
-        # Generate a generic summary for products without specific demo data
-        summary_data = {
-            "name": product_name,
-            "category": product_category,
-            "key_features": [
-                "Comprehensive coverage for your needs",
-                "Flexible premium payment options",
-                "Tax benefits under Section 80C",
-                "Easy claim settlement process",
-            ],
-            "target_audience": f"Customers looking for reliable {product_category.lower()} solutions with good returns and security.",
-            "usps": [
-                "Competitive premiums in the market",
-                "Strong brand trust of Axis Max Life",
-                "Digital-first experience with easy servicing",
-            ],
-            "common_objections": [
-                {
-                    "objection": "Premium bahut zyada hai (Premium is too high)",
-                    "response": "Sir/Ma'am, agar hum daily cost dekhein toh yeh ek cup chai se bhi kam hai. Aur aapke family ki suraksha ka koi mol nahi!",
-                },
-                {
-                    "objection": "I need to think about it / Sochna padega",
-                    "response": "Bilkul sochiye, but yaad rakhiye - age badhne ke saath premium badhta hai. Aaj ka rate lock kar lein, policy baad mein bhi cancel kar sakte hain free-look period mein.",
-                },
-            ],
-        }
+        await query.edit_message_text(
+            f"{E_WARNING} <b>Product details not available</b>\n\n"
+            f"<i>{product_name}</i> ki details abhi load nahi ho payi.\n"
+            f"Please try again with /train",
+            parse_mode="HTML",
+        )
+        return ConversationHandler.END
 
     formatted = format_product_summary(summary_data)
 
@@ -414,12 +260,18 @@ async def _start_quiz(query, context: ContextTypes.DEFAULT_TYPE) -> int:
     product_id = train_data.get("product_id", "")
     product_name = train_data.get("product_name", "Product")
 
-    # Try API first, fall back to demo data
+    # Fetch quiz from backend API
     quiz_resp = await api_client.get_quiz(product_id)
     quiz_data = quiz_resp if not quiz_resp.get("error") else None
 
-    if not quiz_data or quiz_resp.get("error"):
-        quiz_data = DEMO_QUIZZES.get(product_id, DEFAULT_QUIZ)
+    if not quiz_data:
+        await query.edit_message_text(
+            f"{E_WARNING} <b>Quiz not available</b>\n\n"
+            f"<i>{product_name}</i> ka quiz load nahi ho paya.\n"
+            f"Please try again with /train",
+            parse_mode="HTML",
+        )
+        return ConversationHandler.END
 
     questions = quiz_data.get("questions", [])
 

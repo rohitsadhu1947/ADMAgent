@@ -39,18 +39,6 @@ from utils.voice import send_voice_response
 
 logger = logging.getLogger(__name__)
 
-# Demo agents for when API is unreachable or no agents assigned
-DEMO_AGENTS = [
-    {"id": "1", "agent_code": "AGT001", "name": "Suresh Patel", "status": "inactive", "last_active": "30 days ago"},
-    {"id": "2", "agent_code": "AGT002", "name": "Priya Sharma", "status": "at_risk", "last_active": "5 days ago"},
-    {"id": "3", "agent_code": "AGT003", "name": "Amit Kumar", "status": "active", "last_active": "Today"},
-    {"id": "4", "agent_code": "AGT004", "name": "Neeta Desai", "status": "active", "last_active": "Yesterday"},
-    {"id": "5", "agent_code": "AGT005", "name": "Rajesh Verma", "status": "inactive", "last_active": "45 days ago"},
-    {"id": "6", "agent_code": "AGT006", "name": "Kavita Singh", "status": "at_risk", "last_active": "10 days ago"},
-    {"id": "7", "agent_code": "AGT007", "name": "Deepak Gupta", "status": "inactive", "last_active": "60 days ago"},
-    {"id": "8", "agent_code": "AGT008", "name": "Anjali Reddy", "status": "active", "last_active": "2 days ago"},
-]
-
 TOPIC_MAP = {
     "topic_product": "Product Info",
     "topic_commission": "Commission Query",
@@ -85,15 +73,25 @@ async def log_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
 
     context.user_data["ilog"] = {"adm_telegram_id": telegram_id}
 
-    # Fetch agents - use demo data if API fails or no agents
+    # Fetch agents from API
     agents_resp = await api_client.get_assigned_agents(telegram_id)
     agents = agents_resp.get("agents", agents_resp.get("data", []))
 
     if not agents or agents_resp.get("error"):
-        agents = DEMO_AGENTS
+        error_detail = agents_resp.get("detail", "") if agents_resp.get("error") else ""
+        await update.message.reply_text(
+            f"{E_CROSS} <b>No agents found</b>\n\n"
+            f"You don't have any agents assigned yet.\n"
+            f"Aapke paas abhi koi agent assign nahi hai.\n\n"
+            f"Add agents via the web dashboard first."
+            + (f"\n\n<i>API: {error_detail}</i>" if error_detail else ""),
+            parse_mode="HTML",
+        )
+        context.user_data.pop("ilog", None)
+        return ConversationHandler.END
 
     context.user_data["ilog"]["agents_cache"] = agents
-    total_pages = agents_resp.get("total_pages", 1) if not agents_resp.get("error") else 1
+    total_pages = agents_resp.get("total_pages", 1)
 
     await update.message.reply_text(
         f"{E_HANDSHAKE} <b>Log Interaction</b>\n\n"
@@ -127,9 +125,15 @@ async def select_agent(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
         agents_resp = await api_client.get_assigned_agents(telegram_id, page=page)
         agents = agents_resp.get("agents", agents_resp.get("data", []))
         if not agents or agents_resp.get("error"):
-            agents = DEMO_AGENTS
+            await query.edit_message_text(
+                f"{E_CROSS} <b>Could not load agents</b>\n\n"
+                f"Please try again with /log",
+                parse_mode="HTML",
+            )
+            context.user_data.pop("ilog", None)
+            return ConversationHandler.END
         context.user_data["ilog"]["agents_cache"] = agents
-        total_pages = agents_resp.get("total_pages", 1) if not agents_resp.get("error") else 1
+        total_pages = agents_resp.get("total_pages", 1)
         await query.edit_message_text(
             f"{E_HANDSHAKE} <b>Log Interaction</b>\n\nSelect the agent:",
             parse_mode="HTML",
@@ -300,8 +304,17 @@ async def confirm_interaction(update: Update, context: ContextTypes.DEFAULT_TYPE
     result = await api_client.log_interaction(payload)
 
     if result.get("error"):
-        logger.warning("Interaction log API failed (demo mode): %s", result)
-        # Still show success for demo - data was captured in the bot
+        logger.error("Interaction log API failed: %s", result)
+        error_detail = result.get("detail", "Could not save interaction")
+        await query.edit_message_text(
+            f"{E_CROSS} <b>Save Failed</b>\n\n"
+            f"Interaction save nahi ho paya.\n"
+            f"Please try again with /log.\n\n"
+            f"<i>{error_detail}</i>",
+            parse_mode="HTML",
+        )
+        context.user_data.pop("ilog", None)
+        return ConversationHandler.END
 
     saved_text = interaction_saved()
     await query.edit_message_text(saved_text, parse_mode="HTML")

@@ -503,8 +503,8 @@ PRODUCT_KNOWLEDGE = {
 }
 
 
-def _get_demo_answer(question: str) -> dict:
-    """Match question keywords to provide a comprehensive demo answer."""
+def _get_local_answer(question: str) -> dict:
+    """Match question keywords to provide an answer from the local product knowledge base."""
     question_lower = question.lower()
 
     # Check each product knowledge entry for keyword matches
@@ -659,7 +659,7 @@ async def _process_question(update: Update, context: ContextTypes.DEFAULT_TYPE, 
         except Exception:
             pass
 
-    # Try API first
+    # Try AI-powered API first
     try:
         answer_resp = await api_client.ask_product_question(telegram_id, question)
     except Exception:
@@ -668,8 +668,9 @@ async def _process_question(update: Update, context: ContextTypes.DEFAULT_TYPE, 
     if answer_resp and not answer_resp.get("error") and answer_resp.get("answer"):
         answer_data = answer_resp
     else:
-        # Fall back to comprehensive demo answer
-        answer_data = _get_demo_answer(question)
+        # AI API unavailable — use local product knowledge base
+        logger.info("AI API unavailable, using local knowledge base for question: %s", question[:50])
+        answer_data = _get_local_answer(question)
 
     # Get the answer text
     answer_text = answer_data.get("answer", "")

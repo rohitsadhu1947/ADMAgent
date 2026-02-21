@@ -937,68 +937,146 @@ def get_adm_interactions(
 # =====================================================================
 
 @router.get("/training/categories")
-def get_training_categories():
-    """Get training categories for the bot."""
+def get_training_categories(db: Session = Depends(get_db)):
+    """Get training categories from DB products."""
+    from models import Product
+
+    category_labels = {
+        "term": "Term Insurance",
+        "savings": "Savings Plans",
+        "ulip": "ULIPs",
+        "pension": "Pension Plans",
+        "child": "Child Plans",
+        "group": "Group Insurance",
+        "health": "Health Insurance",
+    }
+
+    # Get distinct categories from actual products in DB
+    categories_in_db = db.query(Product.category).filter(
+        Product.active == True
+    ).distinct().all()
+
+    categories = []
+    for (cat,) in categories_in_db:
+        categories.append({
+            "id": cat,
+            "name": category_labels.get(cat, cat.title()),
+        })
+
+    return {"categories": categories}
+
+
+@router.get("/training/categories/{category}/products")
+def get_training_products(category: str, db: Session = Depends(get_db)):
+    """Get products in a training category from DB."""
+    from models import Product
+
+    category_labels = {
+        "term": "Term Insurance",
+        "savings": "Savings Plans",
+        "ulip": "ULIPs",
+        "pension": "Pension Plans",
+        "child": "Child Plans",
+        "group": "Group Insurance",
+        "health": "Health Insurance",
+    }
+
+    products = db.query(Product).filter(
+        Product.category == category,
+        Product.active == True,
+    ).all()
+
     return {
-        "categories": [
-            {"id": "term", "name": "Term Insurance"},
-            {"id": "savings", "name": "Savings Plans"},
-            {"id": "ulip", "name": "ULIPs"},
-            {"id": "pension", "name": "Pension Plans"},
-            {"id": "child", "name": "Child Plans"},
-            {"id": "group", "name": "Group Insurance"},
+        "products": [
+            {
+                "id": str(p.id),
+                "name": p.name,
+                "category": category_labels.get(p.category, p.category.title()),
+            }
+            for p in products
         ]
     }
 
 
-@router.get("/training/categories/{category}/products")
-def get_training_products(category: str):
-    """Get products in a training category for the bot."""
-    products_map = {
-        "term": [
-            {"id": "term_smart", "name": "Smart Term Plan", "category": "Term Insurance"},
-            {"id": "term_flexi", "name": "Flexi Term Plan", "category": "Term Insurance"},
-            {"id": "term_plus", "name": "Term Plus Protect", "category": "Term Insurance"},
-        ],
-        "savings": [
-            {"id": "sav_guaranteed", "name": "Guaranteed Savings Plan", "category": "Savings Plans"},
-            {"id": "sav_wealth", "name": "Wealth Builder Plus", "category": "Savings Plans"},
-            {"id": "sav_endow", "name": "Endowment Advantage", "category": "Savings Plans"},
-        ],
-        "ulip": [
-            {"id": "ulip_grow", "name": "Growth Maximiser ULIP", "category": "ULIPs"},
-            {"id": "ulip_balance", "name": "Balanced Fund ULIP", "category": "ULIPs"},
-            {"id": "ulip_secure", "name": "Secure Growth ULIP", "category": "ULIPs"},
-        ],
-        "pension": [
-            {"id": "pen_assured", "name": "Assured Pension Plan", "category": "Pension Plans"},
-            {"id": "pen_lifetime", "name": "Lifetime Income Plan", "category": "Pension Plans"},
-        ],
-        "child": [
-            {"id": "child_future", "name": "Bright Future Child Plan", "category": "Child Plans"},
-            {"id": "child_edu", "name": "Education Advantage Plan", "category": "Child Plans"},
-        ],
-        "group": [
-            {"id": "grp_term", "name": "Group Term Life", "category": "Group Insurance"},
-            {"id": "grp_health", "name": "Group Health Shield", "category": "Group Insurance"},
-        ],
-    }
-
-    products = products_map.get(category, [])
-    return {"products": products}
-
-
 @router.get("/training/products/{product_id}/summary")
-def get_product_summary(product_id: str):
-    """Get product summary for the bot (hardcoded for demo)."""
-    # Let the bot use its own demo data - return empty to trigger fallback
-    raise HTTPException(status_code=404, detail="Use bot demo data")
+def get_product_summary(product_id: str, db: Session = Depends(get_db)):
+    """Get product summary from DB for the bot."""
+    from models import Product
+
+    try:
+        pid = int(product_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    product = db.query(Product).filter(Product.id == pid).first()
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    # Parse key_features JSON
+    key_features = []
+    if product.key_features:
+        try:
+            key_features = json.loads(product.key_features)
+        except (json.JSONDecodeError, TypeError):
+            key_features = [product.key_features]
+
+    # Build selling tips as USPs
+    usps = []
+    if product.selling_tips:
+        usps = [tip.strip() for tip in product.selling_tips.split(".") if tip.strip()]
+
+    return {
+        "name": product.name,
+        "category": product.category.title(),
+        "description": product.description or "",
+        "key_features": key_features,
+        "target_audience": product.target_audience or "",
+        "usps": usps,
+        "premium_range": product.premium_range or "",
+        "commission_rate": product.commission_rate or "",
+        "common_objections": [],
+    }
 
 
 @router.get("/training/products/{product_id}/quiz")
-def get_product_quiz(product_id: str):
-    """Get quiz for a product (let bot use its own demo data)."""
-    raise HTTPException(status_code=404, detail="Use bot demo data")
+def get_product_quiz(product_id: str, db: Session = Depends(get_db)):
+    """Get quiz for a product. Generates basic quiz from product data."""
+    from models import Product
+
+    try:
+        pid = int(product_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    product = db.query(Product).filter(Product.id == pid).first()
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    # Generate basic quiz questions from product data
+    questions = [
+        {
+            "question": f"{product.name} kis category mein aata hai?",
+            "options": ["Term Insurance", "Savings Plans", "ULIPs", "Pension Plans"],
+            "correct": ["term", "savings", "ulip", "pension", "child", "group", "health"].index(product.category) if product.category in ["term", "savings", "ulip", "pension"] else 0,
+        },
+        {
+            "question": f"{product.name} ka target audience kaun hai?",
+            "options": [
+                product.target_audience or "Working professionals",
+                "Only senior citizens",
+                "Only NRIs",
+                "Only corporate employees",
+            ],
+            "correct": 0,
+        },
+        {
+            "question": "Life insurance ka primary purpose kya hai?",
+            "options": ["Wealth creation", "Family protection", "Tax saving", "Investment returns"],
+            "correct": 1,
+        },
+    ]
+
+    return {"questions": questions}
 
 
 @router.post("/training/quiz/submit")
