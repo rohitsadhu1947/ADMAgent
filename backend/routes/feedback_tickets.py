@@ -21,13 +21,13 @@ from config import settings
 from database import get_db, SessionLocal
 from models import (
     FeedbackTicket, DepartmentQueue, ReasonTaxonomy,
-    AggregationAlert, Agent, ADM,
+    AggregationAlert, Agent, ADM, TicketMessage,
 )
 from schemas import (
     FeedbackTicketSubmit, FeedbackTicketResponse,
     DepartmentResponseSubmit, ScriptRating,
     ReasonTaxonomyResponse, DepartmentQueueResponse,
-    AggregationAlertResponse,
+    AggregationAlertResponse, TicketMessageCreate,
 )
 from services.feedback_classifier import feedback_classifier, BUCKET_DISPLAY_NAMES
 
@@ -170,6 +170,11 @@ def _enrich_ticket(ticket: FeedbackTicket, db: Session) -> dict:
         "reason_display": reason_display,
         "sla_status": sla_status,
     }
+
+    # Message count for conversation indicator
+    message_count = db.query(TicketMessage).filter(TicketMessage.ticket_id == ticket.id).count()
+    data["message_count"] = message_count
+
     return data
 
 
@@ -322,6 +327,17 @@ async def submit_feedback_ticket(
             queue.status = "open"
             queue.sla_status = "on_track"
 
+        # Create follow-up message in the conversation thread
+        followup_msg = TicketMessage(
+            ticket_id=existing.id,
+            sender_type="adm",
+            sender_name=adm.name if adm else "ADM",
+            message_text=data.raw_feedback_text or f"Follow-up with reason codes: {', '.join(data.selected_reason_codes or [])}",
+            voice_file_id=data.voice_file_id,
+            message_type="voice" if data.voice_file_id else "text",
+        )
+        db.add(followup_msg)
+
         existing.updated_at = datetime.utcnow()
         db.commit()
         db.refresh(existing)
@@ -404,6 +420,17 @@ async def submit_feedback_ticket(
         )
         db.add(ticket)
         db.flush()
+
+        # Create initial ADM message in the conversation thread
+        initial_msg = TicketMessage(
+            ticket_id=ticket.id,
+            sender_type="adm",
+            sender_name=adm.name if adm else "ADM",
+            message_text=data.raw_feedback_text or f"Submitted feedback with reason codes: {', '.join(data.selected_reason_codes or [])}",
+            voice_file_id=data.voice_file_id,
+            message_type="voice" if data.voice_file_id else "text",
+        )
+        db.add(initial_msg)
 
         if idx == 0:
             parent_ticket_id = ticket.ticket_id
@@ -701,6 +728,78 @@ def reopen_ticket(ticket_id: str, db: Session = Depends(get_db)):
 
 
 # ---------------------------------------------------------------------------
+# Conversation thread (messages) endpoints
+# ---------------------------------------------------------------------------
+
+@router.get("/{ticket_id}/messages")
+def get_ticket_messages(ticket_id: str, db: Session = Depends(get_db)):
+    """Get conversation thread for a ticket."""
+    ticket = db.query(FeedbackTicket).filter(
+        FeedbackTicket.ticket_id == ticket_id
+    ).first()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+
+    messages = (
+        db.query(TicketMessage)
+        .filter(TicketMessage.ticket_id == ticket.id)
+        .order_by(TicketMessage.created_at.asc())
+        .all()
+    )
+
+    return {
+        "ticket_id": ticket_id,
+        "messages": [
+            {
+                "id": m.id,
+                "sender_type": m.sender_type,
+                "sender_name": m.sender_name,
+                "message_text": m.message_text,
+                "voice_file_id": m.voice_file_id,
+                "message_type": m.message_type,
+                "created_at": m.created_at,
+            }
+            for m in messages
+        ],
+    }
+
+
+@router.post("/{ticket_id}/messages")
+async def add_ticket_message(
+    ticket_id: str,
+    data: TicketMessageCreate,
+    db: Session = Depends(get_db),
+):
+    """Add a message to the ticket thread (department follow-up or clarification)."""
+    ticket = db.query(FeedbackTicket).filter(
+        FeedbackTicket.ticket_id == ticket_id
+    ).first()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+
+    msg = TicketMessage(
+        ticket_id=ticket.id,
+        sender_type=data.sender_type,
+        sender_name=data.sender_name,
+        message_text=data.message_text,
+        message_type=data.message_type or "text",
+    )
+    db.add(msg)
+
+    # If department requests clarification, notify ADM
+    if data.sender_type == "department" and data.message_type == "clarification_request":
+        ticket.status = "pending_adm"
+
+        # Notify ADM via Telegram (fire and forget)
+        asyncio.create_task(
+            _notify_adm_clarification(ticket.ticket_id, data.message_text)
+        )
+
+    db.commit()
+    return {"status": "ok", "message_id": msg.id}
+
+
+# ---------------------------------------------------------------------------
 # Single ticket by ID (catch-all — MUST be after all fixed-path routes)
 # ---------------------------------------------------------------------------
 
@@ -752,6 +851,16 @@ async def department_respond(
             queue.sla_status = "breached"
         else:
             queue.sla_status = "on_track"
+
+    # Create department response message in thread
+    dept_msg = TicketMessage(
+        ticket_id=ticket.id,
+        sender_type="department",
+        sender_name=data.responded_by,
+        message_text=data.response_text,
+        message_type="text",
+    )
+    db.add(dept_msg)
 
     db.commit()
     db.refresh(ticket)
@@ -811,6 +920,17 @@ async def _background_generate_and_push(ticket_id: str, response_text: str):
 
         ticket.generated_script = script
         ticket.status = "script_generated"
+
+        # Create AI script message in thread
+        script_msg = TicketMessage(
+            ticket_id=ticket.id,
+            sender_type="ai",
+            sender_name="Script Generator",
+            message_text=script,
+            message_type="script",
+        )
+        db.add(script_msg)
+
         db.commit()
 
         # Push script to ADM via Telegram
@@ -819,6 +939,57 @@ async def _background_generate_and_push(ticket_id: str, response_text: str):
         logger.info(f"Background script generation complete for {ticket_id}")
     except Exception as e:
         logger.error(f"Background script generation failed for {ticket_id}: {e}")
+    finally:
+        db.close()
+
+
+async def _notify_adm_clarification(ticket_id: str, clarification_text: str):
+    """Notify ADM via Telegram that department needs clarification."""
+    db = SessionLocal()
+    try:
+        token = settings.TELEGRAM_BOT_TOKEN
+        if not token:
+            return
+
+        ticket = db.query(FeedbackTicket).filter(
+            FeedbackTicket.ticket_id == ticket_id
+        ).first()
+        if not ticket:
+            return
+
+        adm = db.query(ADM).filter(ADM.id == ticket.adm_id).first()
+        if not adm or not adm.telegram_chat_id:
+            return
+
+        agent = db.query(Agent).filter(Agent.id == ticket.agent_id).first()
+        agent_name = agent.name if agent else "Agent"
+        bucket_label = BUCKET_DISPLAY_NAMES.get(ticket.bucket, ticket.bucket or "")
+
+        message = (
+            f"\u2753 *Clarification Needed \u2014 {ticket_id}*\n\n"
+            f"*Agent:* {agent_name}\n"
+            f"*Department:* {bucket_label}\n\n"
+            f"\ud83d\udcdd *Department asks:*\n"
+            f"{clarification_text}\n\n"
+            f"_Please use /feedback to provide additional details, "
+            f"or reply to this ticket from the app._"
+        )
+
+        url = f"https://api.telegram.org/bot{token}/sendMessage"
+        payload = {
+            "chat_id": adm.telegram_chat_id,
+            "text": message,
+            "parse_mode": "Markdown",
+        }
+
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.post(url, json=payload)
+            if resp.status_code == 200:
+                logger.info(f"Clarification notification sent to ADM for ticket {ticket_id}")
+            else:
+                logger.error(f"Telegram notification failed: {resp.text}")
+    except Exception as e:
+        logger.error(f"Error notifying ADM about clarification: {e}")
     finally:
         db.close()
 

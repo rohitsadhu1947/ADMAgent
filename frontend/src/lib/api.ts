@@ -209,4 +209,8 @@ export const api = {
     fetchAPI<any>(`/feedback-tickets/${ticketId}/reopen`, { method: 'POST' }),
   getVoiceNoteUrl: (ticketId: string) =>
     `${API_BASE}/feedback-tickets/${ticketId}/voice`,
+  getTicketMessages: (ticketId: string) =>
+    fetchAPI<any>(`/feedback-tickets/${ticketId}/messages`),
+  addTicketMessage: (ticketId: string, data: any) =>
+    fetchAPI<any>(`/feedback-tickets/${ticketId}/messages`, { method: 'POST', body: JSON.stringify(data) }),
 };

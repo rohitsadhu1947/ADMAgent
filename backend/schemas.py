@@ -616,3 +616,11 @@ class AggregationAlertResponse(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class TicketMessageCreate(BaseModel):
+    """Create a message in a ticket thread."""
+    sender_type: str  # "department" | "adm"
+    sender_name: str
+    message_text: str
+    message_type: Optional[str] = "text"  # "text" | "clarification_request"

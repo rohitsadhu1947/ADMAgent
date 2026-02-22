@@ -345,6 +345,32 @@ class FeedbackTicket(Base):
     adm = relationship("ADM")
     interaction = relationship("Interaction")
     queue_entry = relationship("DepartmentQueue", back_populates="ticket", uselist=False)
+    messages = relationship("TicketMessage", back_populates="ticket", order_by="TicketMessage.created_at")
+
+
+# ---------------------------------------------------------------------------
+# Ticket Message (conversation threading)
+# ---------------------------------------------------------------------------
+class TicketMessage(Base):
+    __tablename__ = "ticket_messages"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    ticket_id = Column(Integer, ForeignKey("feedback_tickets.id"), nullable=False, index=True)
+
+    sender_type = Column(String(20), nullable=False)  # "adm" | "department" | "system" | "ai"
+    sender_name = Column(String(200), nullable=True)
+    message_text = Column(Text, nullable=True)
+    voice_file_id = Column(String(200), nullable=True)  # Telegram voice file ID if voice message
+
+    message_type = Column(String(30), default="text")
+    # "text" | "voice" | "script" | "status_change" | "escalation" | "clarification_request"
+
+    metadata_json = Column(Text, nullable=True)  # JSON for extra data
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    # Relationships
+    ticket = relationship("FeedbackTicket", back_populates="messages")
 
 
 # ---------------------------------------------------------------------------

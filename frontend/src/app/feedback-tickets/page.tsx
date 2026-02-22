@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, PieChart, Pie, Cell,
@@ -10,7 +10,8 @@ import {
   MessageSquareText, ChevronDown, ChevronUp, Search, Loader2,
   ArrowRight, Shield, Zap, TrendingUp, AlertCircle, XCircle,
   Building2, ThumbsUp, ThumbsDown, RotateCcw, Eye, FileText,
-  Timer, CircleDot, Star, ChevronRight, Mic, Tags,
+  Timer, CircleDot, Star, ChevronRight, Mic, Tags, Plus, HelpCircle,
+  User, Bot, Settings,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAPI } from '@/lib/useAPI';
@@ -41,6 +42,7 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; 
   classified:       { label: 'Classified', color: 'text-indigo-400', bg: 'bg-indigo-500/10', icon: Filter },
   routed:           { label: 'Routed', color: 'text-cyan-400', bg: 'bg-cyan-500/10', icon: ArrowRight },
   pending_dept:     { label: 'Pending Dept', color: 'text-amber-400', bg: 'bg-amber-500/10', icon: Clock },
+  pending_adm:      { label: 'Awaiting ADM', color: 'text-blue-400', bg: 'bg-blue-500/10', icon: Clock },
   responded:        { label: 'Responded', color: 'text-purple-400', bg: 'bg-purple-500/10', icon: MessageSquareText },
   script_generated: { label: 'Script Ready', color: 'text-emerald-400', bg: 'bg-emerald-500/10', icon: FileText },
   script_sent:      { label: 'Script Sent', color: 'text-green-400', bg: 'bg-green-500/10', icon: Send },
@@ -369,6 +371,14 @@ function TicketCard({ ticket, expanded, onToggle, refetch }: {
           {status.label}
         </span>
 
+        {/* Messages badge */}
+        {ticket.message_count > 0 && (
+          <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-purple-500/10 text-purple-400">
+            <MessageSquareText className="w-3 h-3" />
+            {ticket.message_count}
+          </span>
+        )}
+
         {/* SLA */}
         <div className="flex items-center gap-1 min-w-[90px] justify-end">
           <Timer className={`w-3 h-3 ${sla.color}`} />
@@ -449,30 +459,8 @@ function TicketCard({ ticket, expanded, onToggle, refetch }: {
             </div>
           )}
 
-          {/* Department Response */}
-          {ticket.department_response_text && (
-            <div>
-              <p className="text-[11px] text-gray-500 mb-1">Department Response</p>
-              <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-lg p-3">
-                <p className="text-sm text-emerald-300">{ticket.department_response_text}</p>
-                {ticket.department_responded_by && (
-                  <p className="text-[11px] text-gray-500 mt-1">
-                    By {ticket.department_responded_by} on {formatDate(ticket.department_responded_at)}
-                  </p>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Generated Script */}
-          {ticket.generated_script && (
-            <div>
-              <p className="text-[11px] text-gray-500 mb-1">Communication Script</p>
-              <div className="bg-purple-500/5 border border-purple-500/20 rounded-lg p-3">
-                <pre className="text-sm text-purple-200 whitespace-pre-wrap font-sans">{ticket.generated_script}</pre>
-              </div>
-            </div>
-          )}
+          {/* Conversation Thread */}
+          <ConversationThread ticketId={ticket.ticket_id || ticket.id} ticket={ticket} refetch={refetch} />
 
           {/* Action Buttons */}
           <div className="flex flex-wrap gap-2 pt-2">
@@ -610,6 +598,303 @@ function DetailItem({ label, value }: { label: string; value: string }) {
     <div>
       <p className="text-[10px] text-gray-500 uppercase tracking-wider">{label}</p>
       <p className="text-sm text-gray-200 font-medium capitalize">{value}</p>
+    </div>
+  );
+}
+
+// ─── Conversation Thread ─────────────────────────────────────────
+function ConversationThread({ ticketId, ticket, refetch }: { ticketId: string; ticket: any; refetch: () => void }) {
+  const [messages, setMessages] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [newMessage, setNewMessage] = useState('');
+  const [messageType, setMessageType] = useState<'text' | 'clarification_request'>('text');
+  const [sending, setSending] = useState(false);
+  const [showCompose, setShowCompose] = useState(false);
+  const threadEndRef = useRef<HTMLDivElement>(null);
+
+  // Fetch messages
+  const fetchMessages = useCallback(async () => {
+    try {
+      const data = await api.getTicketMessages(ticketId);
+      const msgs = Array.isArray(data) ? data : (data?.messages || []);
+      setMessages(msgs);
+    } catch {
+      // Fallback: build from denormalized fields if endpoint fails
+      const fallback: any[] = [];
+      if (ticket.raw_feedback_text) {
+        fallback.push({
+          id: 'fb-1',
+          sender_type: 'adm',
+          sender_name: ticket.adm_name || 'ADM',
+          message_text: ticket.raw_feedback_text,
+          message_type: 'text',
+          created_at: ticket.created_at,
+        });
+      }
+      if (ticket.department_response_text) {
+        fallback.push({
+          id: 'dept-1',
+          sender_type: 'department',
+          sender_name: ticket.department_responded_by || 'Department',
+          message_text: ticket.department_response_text,
+          message_type: 'text',
+          created_at: ticket.department_responded_at || ticket.updated_at,
+        });
+      }
+      if (ticket.generated_script) {
+        fallback.push({
+          id: 'ai-1',
+          sender_type: 'ai',
+          sender_name: 'AI Script Generator',
+          message_text: ticket.generated_script,
+          message_type: 'script',
+          created_at: ticket.updated_at,
+        });
+      }
+      setMessages(fallback);
+    } finally {
+      setLoading(false);
+    }
+  }, [ticketId, ticket]);
+
+  useEffect(() => {
+    fetchMessages();
+    const interval = setInterval(fetchMessages, 15000);
+    return () => clearInterval(interval);
+  }, [fetchMessages]);
+
+  useEffect(() => {
+    threadEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages.length]);
+
+  const handleSendMessage = async () => {
+    if (!newMessage.trim()) return;
+    setSending(true);
+    try {
+      await api.addTicketMessage(ticketId, {
+        sender_type: 'department',
+        sender_name: 'Department Team',
+        message_text: newMessage.trim(),
+        message_type: messageType,
+      });
+      setNewMessage('');
+      setShowCompose(false);
+      setMessageType('text');
+      await fetchMessages();
+      refetch();
+    } catch (e: any) {
+      alert(`Error: ${e.message}`);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-6">
+        <Loader2 className="w-5 h-5 text-gray-500 animate-spin" />
+        <span className="ml-2 text-sm text-gray-500">Loading conversation...</span>
+      </div>
+    );
+  }
+
+  if (messages.length === 0) {
+    return (
+      <div className="text-center py-4">
+        <MessageSquareText className="w-8 h-8 text-gray-600 mx-auto mb-2" />
+        <p className="text-sm text-gray-500">No conversation history</p>
+      </div>
+    );
+  }
+
+  const getMessageStyle = (msg: any) => {
+    switch (msg.sender_type) {
+      case 'adm':
+        return {
+          align: 'justify-start',
+          bubble: 'bg-blue-500/10 border-blue-500/20',
+          text: 'text-blue-200',
+          label: 'text-blue-400',
+          icon: User,
+          iconBg: 'bg-blue-500/20',
+          iconColor: 'text-blue-400',
+        };
+      case 'department':
+        return {
+          align: 'justify-end',
+          bubble: 'bg-emerald-500/10 border-emerald-500/20',
+          text: 'text-emerald-200',
+          label: 'text-emerald-400',
+          icon: Building2,
+          iconBg: 'bg-emerald-500/20',
+          iconColor: 'text-emerald-400',
+        };
+      case 'ai':
+        return {
+          align: 'justify-center',
+          bubble: 'bg-purple-500/10 border-purple-500/20',
+          text: 'text-purple-200',
+          label: 'text-purple-400',
+          icon: Bot,
+          iconBg: 'bg-purple-500/20',
+          iconColor: 'text-purple-400',
+        };
+      case 'system':
+      default:
+        return {
+          align: 'justify-center',
+          bubble: 'bg-gray-500/10 border-gray-500/20',
+          text: 'text-gray-300',
+          label: 'text-gray-400',
+          icon: Settings,
+          iconBg: 'bg-gray-500/20',
+          iconColor: 'text-gray-400',
+        };
+    }
+  };
+
+  const getMessageTypeLabel = (msg: any) => {
+    switch (msg.message_type) {
+      case 'script': return '📝 Communication Script';
+      case 'status_change': return '🔄 Status Update';
+      case 'clarification_request': return '❓ Clarification Requested';
+      case 'escalation': return '🚨 Escalation';
+      case 'voice': return '🎤 Voice Note';
+      default: return null;
+    }
+  };
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-[11px] text-gray-500 flex items-center gap-1">
+          <MessageSquareText className="w-3 h-3" />
+          Conversation Thread ({messages.length} messages)
+        </p>
+        {ticket.status !== 'closed' && (
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => { setShowCompose(true); setMessageType('clarification_request'); }}
+              className="flex items-center gap-1 px-2 py-1 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-400 hover:bg-amber-500/20 transition-all text-[11px]"
+            >
+              <HelpCircle className="w-3 h-3" />
+              Request Clarification
+            </button>
+            <button
+              onClick={() => { setShowCompose(true); setMessageType('text'); }}
+              className="flex items-center gap-1 px-2 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20 transition-all text-[11px]"
+            >
+              <Plus className="w-3 h-3" />
+              Add Message
+            </button>
+          </div>
+        )}
+      </div>
+
+      <div className="space-y-3 max-h-[400px] overflow-y-auto pr-1 scrollbar-thin">
+        {messages.map((msg: any) => {
+          const style = getMessageStyle(msg);
+          const MsgIcon = style.icon;
+          const typeLabel = getMessageTypeLabel(msg);
+          const isSystem = msg.sender_type === 'system';
+          const isScript = msg.message_type === 'script';
+
+          // System messages are compact centered rows
+          if (isSystem) {
+            return (
+              <div key={msg.id} className="flex justify-center">
+                <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-gray-500/5 border border-gray-500/10">
+                  <Settings className="w-3 h-3 text-gray-500" />
+                  <span className="text-[11px] text-gray-400">{msg.message_text}</span>
+                  <span className="text-[10px] text-gray-600">{formatDate(msg.created_at)}</span>
+                </div>
+              </div>
+            );
+          }
+
+          return (
+            <div key={msg.id} className={`flex ${style.align}`}>
+              <div className={`max-w-[85%] ${isScript ? 'w-full' : ''}`}>
+                {/* Sender header */}
+                <div className={`flex items-center gap-2 mb-1 ${msg.sender_type === 'department' ? 'flex-row-reverse' : ''}`}>
+                  <div className={`w-5 h-5 rounded-full flex items-center justify-center ${style.iconBg}`}>
+                    <MsgIcon className={`w-3 h-3 ${style.iconColor}`} />
+                  </div>
+                  <span className={`text-[10px] font-medium ${style.label}`}>
+                    {msg.sender_name || msg.sender_type}
+                  </span>
+                  {typeLabel && (
+                    <span className="text-[10px] text-gray-500">{typeLabel}</span>
+                  )}
+                  <span className="text-[10px] text-gray-600">{formatDate(msg.created_at)}</span>
+                </div>
+                {/* Message bubble */}
+                <div className={`rounded-lg p-3 border ${style.bubble}`}>
+                  {isScript ? (
+                    <pre className={`text-sm whitespace-pre-wrap font-sans ${style.text}`}>{msg.message_text}</pre>
+                  ) : (
+                    <p className={`text-sm ${style.text}`}>{msg.message_text}</p>
+                  )}
+                  {msg.voice_file_id && (
+                    <div className="mt-2 flex items-center gap-2">
+                      <Mic className="w-4 h-4 text-purple-400" />
+                      <audio
+                        controls
+                        className="flex-1 h-7"
+                        src={`${API_BASE}/feedback-tickets/${ticketId}/voice`}
+                      >
+                        Audio not supported.
+                      </audio>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+        <div ref={threadEndRef} />
+      </div>
+
+      {/* Compose area */}
+      {showCompose && (
+        <div className="mt-3 p-3 bg-surface-card/50 rounded-lg border border-surface-border/30 space-y-2">
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] text-gray-500">
+              {messageType === 'clarification_request' ? '❓ Requesting Clarification from ADM' : '💬 New Message'}
+            </span>
+          </div>
+          <textarea
+            value={newMessage}
+            onChange={(e) => setNewMessage(e.target.value)}
+            placeholder={
+              messageType === 'clarification_request'
+                ? 'Ask the ADM for additional details...'
+                : 'Type your message...'
+            }
+            className="w-full h-20 bg-surface-card border border-surface-border rounded-lg p-3 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-brand-red/40 resize-none"
+          />
+          <div className="flex gap-2">
+            <button
+              onClick={handleSendMessage}
+              disabled={sending || !newMessage.trim()}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all disabled:opacity-50 ${
+                messageType === 'clarification_request'
+                  ? 'bg-amber-500/20 border border-amber-500/30 text-amber-300 hover:bg-amber-500/30'
+                  : 'bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/30'
+              }`}
+            >
+              {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+              {messageType === 'clarification_request' ? 'Send Clarification Request' : 'Send Message'}
+            </button>
+            <button
+              onClick={() => { setShowCompose(false); setNewMessage(''); setMessageType('text'); }}
+              className="px-4 py-2 rounded-lg bg-surface-card border border-surface-border text-gray-400 hover:text-white text-sm transition-all"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

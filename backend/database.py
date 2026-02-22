@@ -43,5 +43,6 @@ def init_db():
         TrainingProgress, DiaryEntry, DailyBriefing,
         User, Product,
         ReasonTaxonomy, FeedbackTicket, DepartmentQueue, AggregationAlert,
+        TicketMessage,
     )
     Base.metadata.create_all(bind=engine)
