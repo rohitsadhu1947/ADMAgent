@@ -406,14 +406,29 @@ async def receive_notes_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 
 async def receive_notes_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    voice = update.message.voice
-    context.user_data["ilog"]["notes"] = f"[Voice note: {voice.duration}s]"
-    context.user_data["ilog"]["voice_file_id"] = voice.file_id
+    try:
+        voice = update.message.voice
+        if not voice or not voice.file_id:
+            await update.message.reply_text(
+                f"{E_WARNING} Voice note could not be read. Please try again or type text instead.",
+                parse_mode="HTML",
+            )
+            return InteractionStates.ADD_NOTES
 
-    await update.message.reply_text(voice_note_received(), parse_mode="HTML")
-    summary = format_interaction_summary(context.user_data["ilog"])
-    await update.message.reply_text(summary, parse_mode="HTML", reply_markup=confirm_keyboard())
-    return InteractionStates.CONFIRM
+        context.user_data["ilog"]["notes"] = f"[Voice note: {voice.duration}s]"
+        context.user_data["ilog"]["voice_file_id"] = voice.file_id
+
+        await update.message.reply_text(voice_note_received(), parse_mode="HTML")
+        summary = format_interaction_summary(context.user_data["ilog"])
+        await update.message.reply_text(summary, parse_mode="HTML", reply_markup=confirm_keyboard())
+        return InteractionStates.CONFIRM
+    except Exception as e:
+        logger.error(f"Voice note error in /log quick path: {e}")
+        await update.message.reply_text(
+            f"{E_WARNING} Voice note mein error aaya. Text mein likhein ya dubara try karein.",
+            parse_mode="HTML",
+        )
+        return InteractionStates.ADD_NOTES
 
 
 # ---------------------------------------------------------------------------
@@ -633,16 +648,31 @@ async def fb_receive_notes_text(update: Update, context: ContextTypes.DEFAULT_TY
 
 async def fb_receive_notes_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Receive voice note as feedback details in the feedback sub-flow."""
-    voice = update.message.voice
-    context.user_data["ilog"]["fb_free_text"] = f"[Voice note: {voice.duration}s]"
-    context.user_data["ilog"]["fb_voice_file_id"] = voice.file_id
+    try:
+        voice = update.message.voice
+        if not voice or not voice.file_id:
+            await update.message.reply_text(
+                f"{E_WARNING} Voice note could not be read. Please try again or type text instead.",
+                parse_mode="HTML",
+            )
+            return InteractionStates.FB_ADD_NOTES
 
-    await update.message.reply_text(
-        f"\U0001F3A4 <b>Voice note received!</b> ({voice.duration}s)\n"
-        f"Voice note mil gaya! Proceeding to confirmation...",
-        parse_mode="HTML",
-    )
-    return await _fb_show_confirmation_msg(update, context)
+        context.user_data["ilog"]["fb_free_text"] = f"[Voice note: {voice.duration}s]"
+        context.user_data["ilog"]["fb_voice_file_id"] = voice.file_id
+
+        await update.message.reply_text(
+            f"\U0001F3A4 <b>Voice note received!</b> ({voice.duration}s)\n"
+            f"Voice note mil gaya! Proceeding to confirmation...",
+            parse_mode="HTML",
+        )
+        return await _fb_show_confirmation_msg(update, context)
+    except Exception as e:
+        logger.error(f"Voice note error in /log feedback path: {e}")
+        await update.message.reply_text(
+            f"{E_WARNING} Voice note mein error aaya. Text mein likhein ya dubara try karein.",
+            parse_mode="HTML",
+        )
+        return InteractionStates.FB_ADD_NOTES
 
 
 # ---------------------------------------------------------------------------

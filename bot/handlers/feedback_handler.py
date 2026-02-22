@@ -45,25 +45,26 @@ _reason_cache = {}
 
 
 async def _get_reasons() -> dict:
-    """Fetch reason taxonomy from API (cached for 5 min, refreshable if empty)."""
+    """Fetch reason taxonomy from API (cached — only refetches if cache is empty)."""
     global _reason_cache
     if _reason_cache:
         return _reason_cache
 
-    resp = await api_client.get_reason_taxonomy()
-    if isinstance(resp, list):
-        for bucket_data in resp:
-            bucket = bucket_data.get("bucket")
-            reasons = bucket_data.get("reasons", [])
-            if reasons:
-                _reason_cache[bucket] = reasons
-    elif isinstance(resp, dict) and not resp.get("error"):
-        # Might be wrapped differently
-        for bucket, data in resp.items():
-            if isinstance(data, dict):
-                _reason_cache[bucket] = data.get("reasons", [])
+    try:
+        resp = await api_client.get_reason_taxonomy()
+        if isinstance(resp, list):
+            for bucket_data in resp:
+                bucket = bucket_data.get("bucket")
+                reasons = bucket_data.get("reasons", [])
+                if reasons:
+                    _reason_cache[bucket] = reasons
+        elif isinstance(resp, dict) and not resp.get("error"):
+            for bucket, data in resp.items():
+                if isinstance(data, dict):
+                    _reason_cache[bucket] = data.get("reasons", [])
+    except Exception as e:
+        logger.error(f"Failed to fetch reason taxonomy: {e}")
 
-    # If no reasons loaded from API, log warning
     if not _reason_cache:
         logger.warning("No feedback reasons loaded from API — ReasonTaxonomy table may be empty")
 
@@ -166,7 +167,6 @@ def _bucket_from_code(code: str) -> str:
 
 async def feedback_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Start the feedback capture flow."""
-    global _reason_cache
     telegram_id = update.effective_user.id
 
     # --- FIX: Fetch ADM profile at the START and store adm_id early ---
@@ -189,9 +189,7 @@ async def feedback_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         "selected_codes": [],
     }
 
-    # Clear cache so we always get fresh reasons on new feedback session
-    _reason_cache = {}
-    # Pre-fetch reason taxonomy
+    # Pre-fetch reason taxonomy (uses cache if already loaded — no unnecessary API call)
     await _get_reasons()
 
     # Fetch agents
@@ -473,16 +471,31 @@ async def receive_notes_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 async def receive_notes_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Receive voice note as feedback details."""
-    voice = update.message.voice
-    context.user_data["fb"]["free_text"] = f"[Voice note: {voice.duration}s]"
-    context.user_data["fb"]["voice_file_id"] = voice.file_id
+    try:
+        voice = update.message.voice
+        if not voice or not voice.file_id:
+            await update.message.reply_text(
+                f"{E_WARNING} Voice note could not be read. Please try again or type text instead.",
+                parse_mode="HTML",
+            )
+            return FeedbackStates.ADD_NOTES
 
-    await update.message.reply_text(
-        f"\U0001F3A4 <b>Voice note received!</b> ({voice.duration}s)\n"
-        f"Voice note mil gaya! Proceeding to confirmation...",
-        parse_mode="HTML",
-    )
-    return await _show_confirmation_msg(update, context)
+        context.user_data["fb"]["free_text"] = f"[Voice note: {voice.duration}s]"
+        context.user_data["fb"]["voice_file_id"] = voice.file_id
+
+        await update.message.reply_text(
+            f"\U0001F3A4 <b>Voice note received!</b> ({voice.duration}s)\n"
+            f"Voice note mil gaya! Proceeding to confirmation...",
+            parse_mode="HTML",
+        )
+        return await _show_confirmation_msg(update, context)
+    except Exception as e:
+        logger.error(f"Voice note error in /feedback: {e}")
+        await update.message.reply_text(
+            f"{E_WARNING} Voice note mein error aaya. Text mein likhein ya dubara try karein.",
+            parse_mode="HTML",
+        )
+        return FeedbackStates.ADD_NOTES
 
 
 # ---------------------------------------------------------------------------

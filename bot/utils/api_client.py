@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 class APIClient:
     """Async HTTP client wrapper for the ADM Platform API."""
 
-    def __init__(self, base_url: Optional[str] = None, timeout: int = 30):
+    def __init__(self, base_url: Optional[str] = None, timeout: int = 15):
         self.base_url = (base_url or config.API_BASE_URL).rstrip("/")
         self.timeout = timeout
         self._client: Optional[httpx.AsyncClient] = None
