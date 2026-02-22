@@ -171,9 +171,12 @@ def _enrich_ticket(ticket: FeedbackTicket, db: Session) -> dict:
         "sla_status": sla_status,
     }
 
-    # Message count for conversation indicator
-    message_count = db.query(TicketMessage).filter(TicketMessage.ticket_id == ticket.id).count()
-    data["message_count"] = message_count
+    # Message count for conversation indicator (safe — table may not exist on first deploy)
+    try:
+        message_count = db.query(TicketMessage).filter(TicketMessage.ticket_id == ticket.id).count()
+        data["message_count"] = message_count
+    except Exception:
+        data["message_count"] = 0
 
     return data
 
@@ -327,16 +330,19 @@ async def submit_feedback_ticket(
             queue.status = "open"
             queue.sla_status = "on_track"
 
-        # Create follow-up message in the conversation thread
-        followup_msg = TicketMessage(
-            ticket_id=existing.id,
-            sender_type="adm",
-            sender_name=adm.name if adm else "ADM",
-            message_text=data.raw_feedback_text or f"Follow-up with reason codes: {', '.join(data.selected_reason_codes or [])}",
-            voice_file_id=data.voice_file_id,
-            message_type="voice" if data.voice_file_id else "text",
-        )
-        db.add(followup_msg)
+        # Create follow-up message in the conversation thread (non-critical)
+        try:
+            followup_msg = TicketMessage(
+                ticket_id=existing.id,
+                sender_type="adm",
+                sender_name=adm.name if adm else "ADM",
+                message_text=data.raw_feedback_text or f"Follow-up with reason codes: {', '.join(data.selected_reason_codes or [])}",
+                voice_file_id=data.voice_file_id,
+                message_type="voice" if data.voice_file_id else "text",
+            )
+            db.add(followup_msg)
+        except Exception as e:
+            logger.warning(f"Could not create follow-up TicketMessage: {e}")
 
         existing.updated_at = datetime.utcnow()
         db.commit()
@@ -421,16 +427,19 @@ async def submit_feedback_ticket(
         db.add(ticket)
         db.flush()
 
-        # Create initial ADM message in the conversation thread
-        initial_msg = TicketMessage(
-            ticket_id=ticket.id,
-            sender_type="adm",
-            sender_name=adm.name if adm else "ADM",
-            message_text=data.raw_feedback_text or f"Submitted feedback with reason codes: {', '.join(data.selected_reason_codes or [])}",
-            voice_file_id=data.voice_file_id,
-            message_type="voice" if data.voice_file_id else "text",
-        )
-        db.add(initial_msg)
+        # Create initial ADM message in the conversation thread (non-critical — don't fail ticket creation)
+        try:
+            initial_msg = TicketMessage(
+                ticket_id=ticket.id,
+                sender_type="adm",
+                sender_name=adm.name if adm else "ADM",
+                message_text=data.raw_feedback_text or f"Submitted feedback with reason codes: {', '.join(data.selected_reason_codes or [])}",
+                voice_file_id=data.voice_file_id,
+                message_type="voice" if data.voice_file_id else "text",
+            )
+            db.add(initial_msg)
+        except Exception as e:
+            logger.warning(f"Could not create initial TicketMessage: {e}")
 
         if idx == 0:
             parent_ticket_id = ticket.ticket_id
@@ -740,12 +749,16 @@ def get_ticket_messages(ticket_id: str, db: Session = Depends(get_db)):
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
 
-    messages = (
-        db.query(TicketMessage)
-        .filter(TicketMessage.ticket_id == ticket.id)
-        .order_by(TicketMessage.created_at.asc())
-        .all()
-    )
+    try:
+        messages = (
+            db.query(TicketMessage)
+            .filter(TicketMessage.ticket_id == ticket.id)
+            .order_by(TicketMessage.created_at.asc())
+            .all()
+        )
+    except Exception:
+        # Table may not exist yet on first deploy
+        messages = []
 
     return {
         "ticket_id": ticket_id,
@@ -852,15 +865,18 @@ async def department_respond(
         else:
             queue.sla_status = "on_track"
 
-    # Create department response message in thread
-    dept_msg = TicketMessage(
-        ticket_id=ticket.id,
-        sender_type="department",
-        sender_name=data.responded_by,
-        message_text=data.response_text,
-        message_type="text",
-    )
-    db.add(dept_msg)
+    # Create department response message in thread (non-critical)
+    try:
+        dept_msg = TicketMessage(
+            ticket_id=ticket.id,
+            sender_type="department",
+            sender_name=data.responded_by,
+            message_text=data.response_text,
+            message_type="text",
+        )
+        db.add(dept_msg)
+    except Exception as e:
+        logger.warning(f"Could not create dept TicketMessage: {e}")
 
     db.commit()
     db.refresh(ticket)
@@ -921,15 +937,18 @@ async def _background_generate_and_push(ticket_id: str, response_text: str):
         ticket.generated_script = script
         ticket.status = "script_generated"
 
-        # Create AI script message in thread
-        script_msg = TicketMessage(
-            ticket_id=ticket.id,
-            sender_type="ai",
-            sender_name="Script Generator",
-            message_text=script,
-            message_type="script",
-        )
-        db.add(script_msg)
+        # Create AI script message in thread (non-critical)
+        try:
+            script_msg = TicketMessage(
+                ticket_id=ticket.id,
+                sender_type="ai",
+                sender_name="Script Generator",
+                message_text=script,
+                message_type="script",
+            )
+            db.add(script_msg)
+        except Exception as e:
+            logger.warning(f"Could not create AI TicketMessage: {e}")
 
         db.commit()
 
