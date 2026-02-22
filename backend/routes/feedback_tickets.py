@@ -11,13 +11,14 @@ import logging
 from datetime import datetime, timedelta
 from typing import Optional, List
 
+import io
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc
 
 from config import settings
-from database import get_db
+from database import get_db, SessionLocal
 from models import (
     FeedbackTicket, DepartmentQueue, ReasonTaxonomy,
     AggregationAlert, Agent, ADM,
@@ -603,6 +604,103 @@ def list_alerts(
 
 
 # ---------------------------------------------------------------------------
+# Voice note proxy (must be before /{ticket_id} catch-all)
+# ---------------------------------------------------------------------------
+
+@router.get("/{ticket_id}/voice")
+async def get_voice_note(ticket_id: str, db: Session = Depends(get_db)):
+    """Proxy Telegram voice note for browser playback."""
+    from fastapi.responses import StreamingResponse
+
+    ticket = db.query(FeedbackTicket).filter(
+        FeedbackTicket.ticket_id == ticket_id
+    ).first()
+    if not ticket or not ticket.voice_file_id:
+        raise HTTPException(status_code=404, detail="Voice note not found")
+
+    token = settings.TELEGRAM_BOT_TOKEN
+    if not token:
+        raise HTTPException(status_code=503, detail="Telegram not configured")
+
+    async with httpx.AsyncClient(timeout=15) as client:
+        file_resp = await client.get(
+            f"https://api.telegram.org/bot{token}/getFile",
+            params={"file_id": ticket.voice_file_id},
+        )
+        file_data = file_resp.json()
+        if not file_data.get("ok"):
+            raise HTTPException(status_code=404, detail="Voice file expired or not found on Telegram")
+
+        file_path = file_data["result"]["file_path"]
+        audio_resp = await client.get(
+            f"https://api.telegram.org/file/bot{token}/{file_path}"
+        )
+
+    return StreamingResponse(
+        io.BytesIO(audio_resp.content),
+        media_type="audio/ogg",
+        headers={"Content-Disposition": f"inline; filename={ticket_id}-voice.ogg"},
+    )
+
+
+# ---------------------------------------------------------------------------
+# Close / Reopen ticket (must be before /{ticket_id} catch-all)
+# ---------------------------------------------------------------------------
+
+@router.post("/{ticket_id}/close")
+def close_ticket(ticket_id: str, db: Session = Depends(get_db)):
+    """Close a feedback ticket."""
+    ticket = db.query(FeedbackTicket).filter(
+        FeedbackTicket.ticket_id == ticket_id
+    ).first()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    if ticket.status == "closed":
+        raise HTTPException(status_code=400, detail="Ticket already closed")
+
+    ticket.status = "closed"
+    ticket.updated_at = datetime.utcnow()
+
+    queue = db.query(DepartmentQueue).filter(
+        DepartmentQueue.ticket_id == ticket.id
+    ).first()
+    if queue:
+        queue.status = "closed"
+
+    db.commit()
+    return {"status": "ok", "ticket_id": ticket_id, "message": "Ticket closed"}
+
+
+@router.post("/{ticket_id}/reopen")
+def reopen_ticket(ticket_id: str, db: Session = Depends(get_db)):
+    """Reopen a closed ticket."""
+    ticket = db.query(FeedbackTicket).filter(
+        FeedbackTicket.ticket_id == ticket_id
+    ).first()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    if ticket.status != "closed":
+        raise HTTPException(status_code=400, detail="Ticket is not closed")
+
+    ticket.status = "routed"
+    ticket.updated_at = datetime.utcnow()
+
+    queue = db.query(DepartmentQueue).filter(
+        DepartmentQueue.ticket_id == ticket.id
+    ).first()
+    if queue:
+        queue.status = "open"
+        queue.sla_status = "on_track"
+
+    # Reset SLA
+    sla_hours = feedback_classifier.get_sla_hours(ticket.bucket, ticket.priority or "medium")
+    ticket.sla_deadline = datetime.utcnow() + timedelta(hours=sla_hours)
+
+    db.commit()
+    return {"status": "ok", "ticket_id": ticket_id, "message": "Ticket reopened"}
+
+
+# ---------------------------------------------------------------------------
 # Single ticket by ID (catch-all — MUST be after all fixed-path routes)
 # ---------------------------------------------------------------------------
 
@@ -627,7 +725,7 @@ async def department_respond(
     data: DepartmentResponseSubmit,
     db: Session = Depends(get_db),
 ):
-    """Department responds to a feedback ticket. Triggers AI script generation."""
+    """Department responds to a feedback ticket. Triggers AI script generation in background."""
     ticket = db.query(FeedbackTicket).filter(
         FeedbackTicket.ticket_id == ticket_id
     ).first()
@@ -637,13 +735,13 @@ async def department_respond(
     if ticket.status in ("script_sent", "closed"):
         raise HTTPException(status_code=400, detail="Ticket already resolved")
 
-    # Save department response
+    # Save department response immediately
     ticket.department_response_text = data.response_text
     ticket.department_responded_by = data.responded_by
     ticket.department_responded_at = datetime.utcnow()
     ticket.status = "responded"
 
-    # Update queue entry
+    # Update queue entry immediately
     queue = db.query(DepartmentQueue).filter(
         DepartmentQueue.ticket_id == ticket.id
     ).first()
@@ -656,44 +754,73 @@ async def department_respond(
             queue.sla_status = "on_track"
 
     db.commit()
-
-    # Generate communication script (with timeout to avoid Railway request timeout)
-    agent = db.query(Agent).filter(Agent.id == ticket.agent_id).first()
-    try:
-        script = await asyncio.wait_for(
-            feedback_classifier.generate_script(
-                agent_name=agent.name if agent else "Agent",
-                original_feedback=ticket.raw_feedback_text or ticket.parsed_summary or "",
-                reason_code=ticket.reason_code or "",
-                bucket=ticket.bucket,
-                department_response=data.response_text,
-                agent_location=agent.location if agent else "",
-            ),
-            timeout=25.0,  # 25 seconds max for AI generation
-        )
-    except asyncio.TimeoutError:
-        logger.warning(f"AI script generation timed out for {ticket.ticket_id}, using template")
-        script = feedback_classifier._template_script(
-            agent_name=agent.name if agent else "Agent",
-            original_feedback=ticket.raw_feedback_text or ticket.parsed_summary or "",
-            bucket=ticket.bucket,
-            department_response=data.response_text,
-        )
-
-    ticket.generated_script = script
-    ticket.status = "script_generated"
-    db.commit()
     db.refresh(ticket)
 
-    # Push script to ADM via Telegram
-    await _push_script_to_adm(ticket, script, db)
-    db.refresh(ticket)
+    # Fire off script generation + Telegram push in the background
+    asyncio.create_task(
+        _background_generate_and_push(
+            ticket_id=ticket.ticket_id,
+            response_text=data.response_text,
+        )
+    )
 
     return {
         "ticket": _enrich_ticket(ticket, db),
-        "script": script,
-        "message": "Response recorded and communication script generated",
+        "script_status": "generating",
+        "message": "Response recorded. Script generation in progress.",
     }
+
+
+async def _background_generate_and_push(ticket_id: str, response_text: str):
+    """Background task: generate communication script and push to ADM via Telegram.
+
+    Opens its own DB session since the request session is closed after response.
+    """
+    db = SessionLocal()
+    try:
+        ticket = db.query(FeedbackTicket).filter(
+            FeedbackTicket.ticket_id == ticket_id
+        ).first()
+        if not ticket:
+            logger.error(f"Background task: ticket {ticket_id} not found")
+            return
+
+        agent = db.query(Agent).filter(Agent.id == ticket.agent_id).first()
+
+        # Generate communication script (with timeout)
+        try:
+            script = await asyncio.wait_for(
+                feedback_classifier.generate_script(
+                    agent_name=agent.name if agent else "Agent",
+                    original_feedback=ticket.raw_feedback_text or ticket.parsed_summary or "",
+                    reason_code=ticket.reason_code or "",
+                    bucket=ticket.bucket,
+                    department_response=response_text,
+                    agent_location=agent.location if agent else "",
+                ),
+                timeout=25.0,
+            )
+        except asyncio.TimeoutError:
+            logger.warning(f"AI script generation timed out for {ticket_id}, using template")
+            script = feedback_classifier._template_script(
+                agent_name=agent.name if agent else "Agent",
+                original_feedback=ticket.raw_feedback_text or ticket.parsed_summary or "",
+                bucket=ticket.bucket,
+                department_response=response_text,
+            )
+
+        ticket.generated_script = script
+        ticket.status = "script_generated"
+        db.commit()
+
+        # Push script to ADM via Telegram
+        await _push_script_to_adm(ticket, script, db)
+
+        logger.info(f"Background script generation complete for {ticket_id}")
+    except Exception as e:
+        logger.error(f"Background script generation failed for {ticket_id}: {e}")
+    finally:
+        db.close()
 
 
 # ---------------------------------------------------------------------------

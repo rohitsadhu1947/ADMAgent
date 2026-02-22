@@ -232,6 +232,14 @@ class APIClient:
             "feedback": feedback,
         })
 
+    async def get_adm_tickets(self, adm_id: int) -> dict:
+        """Get open feedback tickets for an ADM."""
+        return await self.get("/feedback-tickets/", params={"adm_id": adm_id, "limit": 20})
+
+    async def close_ticket(self, ticket_id: str) -> dict:
+        """Close a feedback ticket."""
+        return await self.post(f"/feedback-tickets/{ticket_id}/close")
+
 
 # Module-level singleton
 api_client = APIClient()

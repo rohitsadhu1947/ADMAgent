@@ -10,13 +10,15 @@ import {
   MessageSquareText, ChevronDown, ChevronUp, Search, Loader2,
   ArrowRight, Shield, Zap, TrendingUp, AlertCircle, XCircle,
   Building2, ThumbsUp, ThumbsDown, RotateCcw, Eye, FileText,
-  Timer, CircleDot, Star, ChevronRight,
+  Timer, CircleDot, Star, ChevronRight, Mic, Tags,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAPI } from '@/lib/useAPI';
 import { useAuth } from '@/lib/AuthContext';
 import ChartCard from '@/components/ChartCard';
 import StatCard from '@/components/StatCard';
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
 
 // ─── Bucket config ───────────────────────────────────────────────
 const BUCKETS: Record<string, { label: string; color: string; bg: string; border: string; icon: React.ElementType }> = {
@@ -282,16 +284,22 @@ function TicketCard({ ticket, expanded, onToggle, refetch }: {
   const StatusIcon = status.icon;
   const BucketIcon = bucket.icon;
 
+  const [scriptGenerating, setScriptGenerating] = useState(false);
+
   const handleRespond = async () => {
     if (!responseText.trim()) return;
     setSubmitting(true);
     try {
-      await api.respondToTicket(ticket.ticket_id || ticket.id, {
+      const result = await api.respondToTicket(ticket.ticket_id || ticket.id, {
         response_text: responseText,
         responded_by: 'Department Team',
       });
       setResponseText('');
       setResponding(false);
+      if (result?.script_status === 'generating') {
+        setScriptGenerating(true);
+        setTimeout(() => setScriptGenerating(false), 30000);
+      }
       refetch();
     } catch (e: any) {
       alert(`Error: ${e.message}`);
@@ -386,7 +394,21 @@ function TicketCard({ ticket, expanded, onToggle, refetch }: {
             <DetailItem label="Channel" value={ticket.channel || '—'} />
           </div>
 
-          {/* Secondary Reason Codes */}
+          {/* ADM Selected Reasons */}
+          {Array.isArray(ticket.selected_reasons) && ticket.selected_reasons.length > 0 && (
+            <div>
+              <p className="text-[11px] text-gray-500 mb-1 flex items-center gap-1"><Tags className="w-3 h-3" /> ADM Selected Reasons</p>
+              <div className="flex flex-wrap gap-1">
+                {ticket.selected_reasons.map((code: string) => (
+                  <span key={code} className="px-2 py-0.5 rounded text-[10px] font-bold bg-brand-red/10 border border-brand-red/20 text-brand-red">
+                    {code}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Secondary Reason Codes (AI-derived) */}
           {Array.isArray(ticket.secondary_reason_codes) && ticket.secondary_reason_codes.length > 0 && (
             <div>
               <p className="text-[11px] text-gray-500 mb-1">Secondary Reasons</p>
@@ -407,6 +429,23 @@ function TicketCard({ ticket, expanded, onToggle, refetch }: {
               <p className="text-sm text-gray-300 bg-surface-card/50 rounded-lg p-3 border border-surface-border/30">
                 {ticket.raw_feedback_text}
               </p>
+            </div>
+          )}
+
+          {/* Voice Note Player */}
+          {ticket.voice_file_id && (
+            <div>
+              <p className="text-[11px] text-gray-500 mb-1 flex items-center gap-1"><Mic className="w-3 h-3" /> Voice Note from ADM</p>
+              <div className="flex items-center gap-3 bg-surface-card/50 rounded-lg p-3 border border-surface-border/30">
+                <Mic className="w-5 h-5 text-purple-400 shrink-0" />
+                <audio
+                  controls
+                  className="flex-1 h-8"
+                  src={`${API_BASE}/feedback-tickets/${ticket.ticket_id}/voice`}
+                >
+                  Your browser does not support audio playback.
+                </audio>
+              </div>
             </div>
           )}
 
@@ -437,8 +476,8 @@ function TicketCard({ ticket, expanded, onToggle, refetch }: {
 
           {/* Action Buttons */}
           <div className="flex flex-wrap gap-2 pt-2">
-            {/* Respond button - show if pending_dept or routed */}
-            {['pending_dept', 'routed', 'classified'].includes(ticket.status) && !responding && (
+            {/* Respond button - show for any status that needs department action */}
+            {['received', 'pending_dept', 'routed', 'classified'].includes(ticket.status) && !responding && (
               <button
                 onClick={() => setResponding(true)}
                 className="flex items-center gap-2 px-4 py-2 rounded-lg bg-brand-red/10 border border-brand-red/20 text-brand-red hover:bg-brand-red/20 transition-all text-sm font-medium"
@@ -487,6 +526,48 @@ function TicketCard({ ticket, expanded, onToggle, refetch }: {
                 {ticket.adm_script_rating === 'helpful' ? <ThumbsUp className="w-3 h-3" /> : <ThumbsDown className="w-3 h-3" />}
                 Rated: {ticket.adm_script_rating}
               </span>
+            )}
+
+            {/* Script generating indicator */}
+            {(scriptGenerating || ticket.status === 'responded') && !ticket.generated_script && (
+              <span className="flex items-center gap-2 text-xs text-purple-400">
+                <Loader2 className="w-3 h-3 animate-spin" />
+                Script generating...
+              </span>
+            )}
+
+            {/* Close ticket */}
+            {ticket.status !== 'closed' && (
+              <button
+                onClick={async () => {
+                  if (confirm('Close this ticket?')) {
+                    try {
+                      await api.closeTicket(ticket.ticket_id || ticket.id);
+                      refetch();
+                    } catch (e: any) { alert(`Error: ${e.message}`); }
+                  }
+                }}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-gray-500/10 border border-gray-500/20 text-gray-400 hover:bg-gray-500/20 transition-all text-xs"
+              >
+                <XCircle className="w-3 h-3" />
+                Close
+              </button>
+            )}
+
+            {/* Reopen ticket */}
+            {ticket.status === 'closed' && (
+              <button
+                onClick={async () => {
+                  try {
+                    await api.reopenTicket(ticket.ticket_id || ticket.id);
+                    refetch();
+                  } catch (e: any) { alert(`Error: ${e.message}`); }
+                }}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-400 hover:bg-amber-500/20 transition-all text-xs"
+              >
+                <RotateCcw className="w-3 h-3" />
+                Reopen
+              </button>
             )}
           </div>
 

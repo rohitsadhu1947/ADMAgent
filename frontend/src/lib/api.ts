@@ -203,4 +203,10 @@ export const api = {
   getDepartmentQueue: (department: string) => fetchAPI<any>(`/feedback-tickets/queue/${department}`),
   getTicketAnalytics: () => fetchAPI<any>('/feedback-tickets/analytics/summary'),
   getAggregationAlerts: () => fetchAPI<any>('/feedback-tickets/alerts'),
+  closeTicket: (ticketId: string) =>
+    fetchAPI<any>(`/feedback-tickets/${ticketId}/close`, { method: 'POST' }),
+  reopenTicket: (ticketId: string) =>
+    fetchAPI<any>(`/feedback-tickets/${ticketId}/reopen`, { method: 'POST' }),
+  getVoiceNoteUrl: (ticketId: string) =>
+    `${API_BASE}/feedback-tickets/${ticketId}/voice`,
 };

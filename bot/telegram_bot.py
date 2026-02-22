@@ -29,7 +29,7 @@ try:
 except ImportError:
     pass
 
-from telegram import Update, BotCommand
+from telegram import Update, BotCommand, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -97,6 +97,60 @@ async def agents_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         text = format_agent_list(agents, page=1, total_pages=total_pages)
         sent_msg = await update.message.reply_text(text, parse_mode="HTML")
     await send_voice_response(sent_msg, text)
+
+
+# ---------------------------------------------------------------------------
+# /tickets command - view open feedback tickets
+# ---------------------------------------------------------------------------
+
+async def tickets_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Show ADM's open feedback tickets."""
+    telegram_id = str(update.effective_user.id)
+    profile = await api_client.get_adm_profile(telegram_id)
+    if not profile or profile.get("error"):
+        await update.message.reply_text("❌ Profile not found. Use /start to register.")
+        return
+
+    adm_id = profile.get("id", profile.get("adm_id"))
+    result = await api_client.get_adm_tickets(adm_id)
+    tickets = result.get("tickets", []) if isinstance(result, dict) else []
+
+    if not tickets:
+        await update.message.reply_text("📋 No open tickets found.")
+        return
+
+    for t in tickets[:10]:
+        status_emoji = {"routed": "📤", "responded": "💬", "script_generated": "📝", "script_sent": "✅"}.get(t.get("status", ""), "📋")
+        text = (
+            f"{status_emoji} *{t['ticket_id']}*\n"
+            f"Agent: {t.get('agent_name', '—')}\n"
+            f"Dept: {t.get('bucket_display', t.get('bucket', '—'))}\n"
+            f"Status: {t.get('status', '—')}\n"
+            f"Reason: {t.get('reason_code', '—')}"
+        )
+        buttons = []
+        if t.get("status") in ("script_sent", "script_generated", "responded"):
+            buttons.append([InlineKeyboardButton("✅ Close Ticket", callback_data=f"close_ticket:{t['ticket_id']}")])
+
+        await update.message.reply_text(
+            text,
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup(buttons) if buttons else None,
+        )
+
+
+async def close_ticket_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle close ticket button press."""
+    query = update.callback_query
+    await query.answer()
+
+    ticket_id = query.data.split(":", 1)[1]
+    result = await api_client.close_ticket(ticket_id)
+
+    if result.get("status") == "ok":
+        await query.edit_message_text(f"✅ Ticket {ticket_id} closed successfully.")
+    else:
+        await query.edit_message_text(f"❌ Failed to close ticket: {result.get('detail', 'Unknown error')}")
 
 
 # ---------------------------------------------------------------------------
@@ -179,6 +233,7 @@ async def post_init(application: Application) -> None:
         BotCommand("train", "Product training modules"),
         BotCommand("ask", "AI product answers"),
         BotCommand("stats", "Your performance stats"),
+        BotCommand("tickets", "View your open tickets"),
         BotCommand("voice", "Toggle voice notes on/off"),
         BotCommand("help", "Show all commands"),
     ]
@@ -267,6 +322,9 @@ def main() -> None:
     # /voice - toggle voice mode
     application.add_handler(CommandHandler("voice", voice_command))
 
+    # /tickets - view open feedback tickets
+    application.add_handler(CommandHandler("tickets", tickets_command))
+
     # ------------------------------------------------------------------
     # Register callback query handlers for menus and actions
     # ------------------------------------------------------------------
@@ -279,6 +337,9 @@ def main() -> None:
 
     # Stats action callbacks
     application.add_handler(CallbackQueryHandler(stats_callback, pattern=r"^stats_"))
+
+    # Close ticket callback
+    application.add_handler(CallbackQueryHandler(close_ticket_callback, pattern=r"^close_ticket:"))
 
     # ------------------------------------------------------------------
     # Catch-all handler for debugging (logs any unhandled message)
