@@ -110,13 +110,12 @@ export default function FeedbackTicketsPage() {
   const { user, isAdmin } = useAuth();
   const [activeTab, setActiveTab] = useState<TabKey>('queue');
 
-  // Data fetching
+  // Data fetching — NO auto-polling for tickets (user clicks Refresh or actions call refetch)
   const { data: ticketsRaw, loading: ticketsLoading, refetch: refetchTickets } = useAPI(
     () => api.listFeedbackTickets(isAdmin ? {} : { adm_id: String(user?.adm_id || '') }),
-    30000,
   );
-  const { data: analytics, loading: analyticsLoading } = useAPI(() => api.getTicketAnalytics(), 60000);
-  const { data: alertsRaw } = useAPI(() => api.getAggregationAlerts(), 60000);
+  const { data: analytics, loading: analyticsLoading } = useAPI(() => api.getTicketAnalytics(), 120000);
+  const { data: alertsRaw } = useAPI(() => api.getAggregationAlerts(), 120000);
 
   // Backend returns { tickets: [...], total } — extract the array
   const tickets = Array.isArray(ticketsRaw) ? ticketsRaw : (ticketsRaw?.tickets || []);
@@ -659,9 +658,12 @@ function ConversationThread({ ticketId, ticket, refetch }: { ticketId: string; t
 
   useEffect(() => {
     fetchMessages();
-    const interval = setInterval(fetchMessages, 15000);
-    return () => clearInterval(interval);
-  }, [fetchMessages]);
+    // Only poll when user is NOT composing a message — don't interrupt their work
+    if (!showCompose) {
+      const interval = setInterval(fetchMessages, 30000);
+      return () => clearInterval(interval);
+    }
+  }, [fetchMessages, showCompose]);
 
   useEffect(() => {
     threadEndRef.current?.scrollIntoView({ behavior: 'smooth' });
