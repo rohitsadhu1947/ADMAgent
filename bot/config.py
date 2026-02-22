@@ -88,6 +88,14 @@ class InteractionStates:
     FB_CONFIRM = 20
 
 
+# Case history flow states
+class CaseStates:
+    SELECT_AGENT = 40
+    VIEW_CASES = 41
+    VIEW_CASE_DETAIL = 42
+    REPLY_TO_CASE = 43
+
+
 # Training flow states
 class TrainingStates:
     SELECT_CATEGORY = 20

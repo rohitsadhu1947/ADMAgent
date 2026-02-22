@@ -799,14 +799,34 @@ async def add_ticket_message(
     )
     db.add(msg)
 
-    # If department requests clarification, notify ADM
-    if data.sender_type == "department" and data.message_type == "clarification_request":
-        ticket.status = "pending_adm"
+    # Department sends message → always notify ADM via Telegram
+    if data.sender_type == "department":
+        if data.message_type == "clarification_request":
+            ticket.status = "pending_adm"
+        else:
+            # Regular department message — keep status or move to pending_adm
+            if ticket.status not in ("responded", "script_generated", "script_sent", "closed"):
+                ticket.status = "pending_adm"
 
         # Notify ADM via Telegram (fire and forget)
         asyncio.create_task(
-            _notify_adm_clarification(ticket.ticket_id, data.message_text)
+            _notify_adm_department_message(
+                ticket_id=ticket.ticket_id,
+                message_text=data.message_text,
+                is_clarification=(data.message_type == "clarification_request"),
+            )
         )
+
+    # ADM sends message via web (rare but possible) → notify department
+    elif data.sender_type == "adm":
+        if ticket.status not in ("closed",):
+            ticket.status = "received"  # Reset so department sees it again
+        # Update queue entry
+        queue = db.query(DepartmentQueue).filter(
+            DepartmentQueue.ticket_id == ticket.id
+        ).first()
+        if queue:
+            queue.status = "open"
 
     db.commit()
     return {"status": "ok", "message_id": msg.id}
@@ -962,8 +982,10 @@ async def _background_generate_and_push(ticket_id: str, response_text: str):
         db.close()
 
 
-async def _notify_adm_clarification(ticket_id: str, clarification_text: str):
-    """Notify ADM via Telegram that department needs clarification."""
+async def _notify_adm_department_message(
+    ticket_id: str, message_text: str, is_clarification: bool = False,
+):
+    """Notify ADM via Telegram when department sends any message on a ticket."""
     db = SessionLocal()
     try:
         token = settings.TELEGRAM_BOT_TOKEN
@@ -984,33 +1006,54 @@ async def _notify_adm_clarification(ticket_id: str, clarification_text: str):
         agent_name = agent.name if agent else "Agent"
         bucket_label = BUCKET_DISPLAY_NAMES.get(ticket.bucket, ticket.bucket or "")
 
+        if is_clarification:
+            emoji = "\u2753"
+            header = "Clarification Needed"
+            dept_label = "Department asks"
+        else:
+            emoji = "\U0001F4AC"
+            header = "Department Update"
+            dept_label = "Department says"
+
         message = (
-            f"\u2753 *Clarification Needed \u2014 {ticket_id}*\n\n"
+            f"{emoji} *{header} \u2014 {ticket_id}*\n\n"
             f"*Agent:* {agent_name}\n"
             f"*Department:* {bucket_label}\n\n"
-            f"\ud83d\udcdd *Department asks:*\n"
-            f"{clarification_text}\n\n"
-            f"_Please use /feedback to provide additional details, "
-            f"or reply to this ticket from the app._"
+            f"\U0001F4DD *{dept_label}:*\n"
+            f"{message_text}\n\n"
+            f"_Use /cases to view your open cases and reply._"
         )
 
+        # Add inline button to view case
         url = f"https://api.telegram.org/bot{token}/sendMessage"
         payload = {
             "chat_id": adm.telegram_chat_id,
             "text": message,
             "parse_mode": "Markdown",
+            "reply_markup": {
+                "inline_keyboard": [
+                    [{"text": "\U0001F4CB View Case", "callback_data": f"view_case:{ticket_id}"}],
+                    [{"text": "\u2705 Close Ticket", "callback_data": f"close_ticket:{ticket_id}"}],
+                ]
+            },
         }
 
         async with httpx.AsyncClient(timeout=15) as client:
             resp = await client.post(url, json=payload)
             if resp.status_code == 200:
-                logger.info(f"Clarification notification sent to ADM for ticket {ticket_id}")
+                logger.info(f"Department message notification sent to ADM for {ticket_id}")
             else:
                 logger.error(f"Telegram notification failed: {resp.text}")
     except Exception as e:
-        logger.error(f"Error notifying ADM about clarification: {e}")
+        logger.error(f"Error notifying ADM about department message: {e}")
     finally:
         db.close()
+
+
+# Keep backward compat alias
+async def _notify_adm_clarification(ticket_id: str, clarification_text: str):
+    """Backward compat — redirects to the generic department message notifier."""
+    await _notify_adm_department_message(ticket_id, clarification_text, is_clarification=True)
 
 
 # ---------------------------------------------------------------------------

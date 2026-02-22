@@ -459,12 +459,12 @@ function TicketCard({ ticket, expanded, onToggle, refetch }: {
           )}
 
           {/* Conversation Thread */}
-          <ConversationThread ticketId={ticket.ticket_id || ticket.id} ticket={ticket} refetch={refetch} />
+          <ConversationThread ticketId={ticket.ticket_id || ticket.id} ticket={ticket} refetch={refetch} isAdmin={true} />
 
           {/* Action Buttons */}
           <div className="flex flex-wrap gap-2 pt-2">
             {/* Respond button - show for any status that needs department action */}
-            {['received', 'pending_dept', 'routed', 'classified'].includes(ticket.status) && !responding && (
+            {['received', 'pending_dept', 'pending_adm', 'routed', 'classified'].includes(ticket.status) && !responding && (
               <button
                 onClick={() => setResponding(true)}
                 className="flex items-center gap-2 px-4 py-2 rounded-lg bg-brand-red/10 border border-brand-red/20 text-brand-red hover:bg-brand-red/20 transition-all text-sm font-medium"
@@ -602,7 +602,7 @@ function DetailItem({ label, value }: { label: string; value: string }) {
 }
 
 // ─── Conversation Thread ─────────────────────────────────────────
-function ConversationThread({ ticketId, ticket, refetch }: { ticketId: string; ticket: any; refetch: () => void }) {
+function ConversationThread({ ticketId, ticket, refetch, isAdmin }: { ticketId: string; ticket: any; refetch: () => void; isAdmin?: boolean }) {
   const [messages, setMessages] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [newMessage, setNewMessage] = useState('');
@@ -674,8 +674,8 @@ function ConversationThread({ ticketId, ticket, refetch }: { ticketId: string; t
     setSending(true);
     try {
       await api.addTicketMessage(ticketId, {
-        sender_type: 'department',
-        sender_name: 'Department Team',
+        sender_type: isAdmin ? 'department' : 'department',
+        sender_name: isAdmin ? 'Department Team' : 'Department Team',
         message_text: newMessage.trim(),
         message_type: messageType,
       });

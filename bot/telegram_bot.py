@@ -59,6 +59,7 @@ from handlers.training_handler import build_training_handler
 from handlers.briefing_handler import briefing_command, briefing_callback
 from handlers.ask_handler import build_ask_handler
 from handlers.stats_handler import stats_command, stats_callback
+from handlers.case_handler import build_cases_handler
 
 
 # ---------------------------------------------------------------------------
@@ -137,6 +138,66 @@ async def tickets_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             parse_mode="Markdown",
             reply_markup=InlineKeyboardMarkup(buttons) if buttons else None,
         )
+
+
+async def view_case_from_notification(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle 'View Case' button press from Telegram notification."""
+    query = update.callback_query
+    await query.answer()
+
+    ticket_id = query.data.split(":", 1)[1]
+
+    # Fetch ticket details
+    ticket = await api_client.get_ticket_by_id(ticket_id)
+    if ticket.get("error"):
+        await query.edit_message_text(f"{E_WARNING} Could not load case {ticket_id}. Use /cases to view your cases.")
+        return
+
+    msgs_resp = await api_client.get_ticket_messages(ticket_id)
+    messages = msgs_resp.get("messages", []) if isinstance(msgs_resp, dict) else []
+
+    agent_name = ticket.get("agent_name", "Agent")
+    status = ticket.get("status", "")
+    bucket = ticket.get("bucket_display") or ticket.get("bucket", "")
+    reason = ticket.get("reason_display") or ticket.get("reason_code", "")
+
+    text = (
+        f"\U0001F4C1 <b>Case {ticket_id}</b>\n"
+        f"{'=' * 28}\n"
+        f"\U0001F464 <b>Agent:</b> {agent_name}\n"
+        f"\U0001F3E2 <b>Dept:</b> {bucket}\n"
+        f"\U0001F4CB <b>Reason:</b> {reason}\n"
+        f"{'=' * 28}\n\n"
+    )
+
+    if messages:
+        text += f"<b>Last {min(5, len(messages))} messages:</b>\n\n"
+        for msg in messages[-5:]:
+            sender = msg.get("sender_type", "")
+            name = msg.get("sender_name", sender)
+            msg_text = msg.get("message_text", "")
+            if len(msg_text) > 200:
+                msg_text = msg_text[:197] + "..."
+            icon = {
+                "adm": "\U0001F464",
+                "department": "\U0001F3E2",
+                "ai": "\U0001F916",
+            }.get(sender, "\u2139\uFE0F")
+            text += f"{icon} <b>{name}:</b>\n{msg_text}\n\n"
+
+    text += f"<i>Use /cases to reply or manage this case.</i>"
+
+    if len(text) > 4000:
+        text = text[:3997] + "..."
+
+    buttons = [[InlineKeyboardButton(
+        "\u2705 Close Ticket", callback_data=f"close_ticket:{ticket_id}",
+    )]]
+
+    await query.edit_message_text(
+        text, parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(buttons),
+    )
 
 
 async def close_ticket_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -233,6 +294,7 @@ async def post_init(application: Application) -> None:
         BotCommand("train", "Product training modules"),
         BotCommand("ask", "AI product answers"),
         BotCommand("stats", "Your performance stats"),
+        BotCommand("cases", "Case history per agent"),
         BotCommand("tickets", "View your open tickets"),
         BotCommand("voice", "Toggle voice notes on/off"),
         BotCommand("help", "Show all commands"),
@@ -303,6 +365,9 @@ def main() -> None:
     # /ask - AI product Q&A (ConversationHandler)
     application.add_handler(build_ask_handler())
 
+    # /cases - case history per agent (ConversationHandler)
+    application.add_handler(build_cases_handler())
+
     # ------------------------------------------------------------------
     # Register simple command handlers
     # ------------------------------------------------------------------
@@ -340,6 +405,9 @@ def main() -> None:
 
     # Close ticket callback
     application.add_handler(CallbackQueryHandler(close_ticket_callback, pattern=r"^close_ticket:"))
+
+    # View case from Telegram notification (outside conversation handler)
+    application.add_handler(CallbackQueryHandler(view_case_from_notification, pattern=r"^view_case:"))
 
     # ------------------------------------------------------------------
     # Catch-all handler for debugging (logs any unhandled message)

@@ -240,6 +240,33 @@ class APIClient:
         """Close a feedback ticket."""
         return await self.post(f"/feedback-tickets/{ticket_id}/close")
 
+    async def get_ticket_messages(self, ticket_id: str) -> dict:
+        """Get conversation thread messages for a ticket."""
+        return await self.get(f"/feedback-tickets/{ticket_id}/messages")
+
+    async def add_ticket_message(self, ticket_id: str, sender_type: str,
+                                  sender_name: str, message_text: str,
+                                  message_type: str = "text") -> dict:
+        """Add a message to a ticket conversation thread."""
+        return await self.post(f"/feedback-tickets/{ticket_id}/messages", data={
+            "sender_type": sender_type,
+            "sender_name": sender_name,
+            "message_text": message_text,
+            "message_type": message_type,
+        })
+
+    async def get_ticket_by_id(self, ticket_id: str) -> dict:
+        """Get a single ticket by ticket_id."""
+        return await self.get(f"/feedback-tickets/{ticket_id}")
+
+    async def get_agent_tickets(self, adm_id: int, agent_id: int) -> dict:
+        """Get feedback tickets for a specific agent under this ADM."""
+        return await self.get("/feedback-tickets/", params={
+            "adm_id": adm_id,
+            "agent_id": agent_id,
+            "limit": 20,
+        })
+
 
 # Module-level singleton
 api_client = APIClient()
