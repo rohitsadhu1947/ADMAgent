@@ -623,4 +623,6 @@ class TicketMessageCreate(BaseModel):
     sender_type: str  # "department" | "adm"
     sender_name: str
     message_text: str
-    message_type: Optional[str] = "text"  # "text" | "clarification_request"
+    message_type: Optional[str] = "text"  # "text" | "clarification_request" | "photo" | "document" | "voice"
+    voice_file_id: Optional[str] = None  # Telegram file_id for voice/photo/document
+    metadata_json: Optional[str] = None  # JSON string for extra data (file name, mime type, etc.)

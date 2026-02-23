@@ -802,6 +802,7 @@ def get_ticket_messages(ticket_id: str, db: Session = Depends(get_db)):
                 "message_text": m.message_text,
                 "voice_file_id": m.voice_file_id,
                 "message_type": m.message_type,
+                "metadata_json": m.metadata_json,
                 "created_at": m.created_at,
             }
             for m in messages
@@ -828,6 +829,8 @@ async def add_ticket_message(
         sender_name=data.sender_name,
         message_text=data.message_text,
         message_type=data.message_type or "text",
+        voice_file_id=data.voice_file_id,
+        metadata_json=data.metadata_json,
     )
     db.add(msg)
 

@@ -8,6 +8,7 @@ Allows ADMs to:
 4. Close ticket from conversation view
 """
 
+import json
 import logging
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -298,7 +299,17 @@ async def _render_case_detail(query_or_msg, context, ticket_id: str, is_message=
             else:
                 icon = "\u2139\uFE0F"  # info
 
-            text += f"{icon} <b>{name}:</b>\n{msg_text}\n\n"
+            # Attachment indicator
+            msg_type = msg.get("message_type", "text")
+            attach = ""
+            if msg_type == "photo":
+                attach = "\U0001F4F7 "
+            elif msg_type == "document":
+                attach = "\U0001F4CE "
+            elif msg_type == "voice":
+                attach = "\U0001F3A4 "
+
+            text += f"{icon} <b>{name}:</b>\n{attach}{msg_text}\n\n"
     else:
         # Fallback to denormalized fields
         if ticket.get("raw_feedback_text"):
@@ -537,6 +548,124 @@ async def receive_reply_voice(update: Update, context: ContextTypes.DEFAULT_TYPE
         return CaseStates.REPLY_TO_CASE
 
 
+async def receive_reply_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Receive ADM's photo reply (screenshot, document photo, etc.)."""
+    cases_data = context.user_data.get("cases", {})
+    ticket_id = cases_data.get("current_ticket_id")
+    adm_name = cases_data.get("adm_name", "ADM")
+
+    try:
+        photo = update.message.photo[-1] if update.message.photo else None
+        if not photo:
+            await update.message.reply_text(
+                f"{E_WARNING} Photo could not be read. Please try again.",
+                parse_mode="HTML",
+            )
+            return CaseStates.REPLY_TO_CASE
+
+        caption = update.message.caption or ""
+        message_text = f"[Photo attached] {caption}".strip()
+        metadata = json.dumps({
+            "file_id": photo.file_id,
+            "file_unique_id": photo.file_unique_id,
+            "width": photo.width,
+            "height": photo.height,
+            "type": "photo",
+        })
+
+        result = await api_client.add_ticket_message(
+            ticket_id=ticket_id,
+            sender_type="adm",
+            sender_name=adm_name,
+            message_text=message_text,
+            message_type="photo",
+            voice_file_id=photo.file_id,
+            metadata_json=metadata,
+        )
+
+        if result.get("error"):
+            await update.message.reply_text(
+                f"{E_WARNING} Could not send photo. Try again.",
+                parse_mode="HTML",
+            )
+            return CaseStates.REPLY_TO_CASE
+
+        await update.message.reply_text(
+            f"{E_CHECK} <b>Photo sent!</b>\n"
+            f"Loading updated case...",
+            parse_mode="HTML",
+        )
+        return await _render_case_detail(update.message, context, ticket_id, is_message=True)
+
+    except Exception as e:
+        logger.error(f"Photo reply error: {e}")
+        await update.message.reply_text(
+            f"{E_WARNING} Error sending photo. Please type your reply instead.",
+            parse_mode="HTML",
+        )
+        return CaseStates.REPLY_TO_CASE
+
+
+async def receive_reply_document(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Receive ADM's document reply (PDF, Excel, etc.)."""
+    cases_data = context.user_data.get("cases", {})
+    ticket_id = cases_data.get("current_ticket_id")
+    adm_name = cases_data.get("adm_name", "ADM")
+
+    try:
+        doc = update.message.document
+        if not doc:
+            await update.message.reply_text(
+                f"{E_WARNING} Document could not be read. Please try again.",
+                parse_mode="HTML",
+            )
+            return CaseStates.REPLY_TO_CASE
+
+        caption = update.message.caption or ""
+        file_name = doc.file_name or "document"
+        message_text = f"[Document: {file_name}] {caption}".strip()
+        metadata = json.dumps({
+            "file_id": doc.file_id,
+            "file_unique_id": doc.file_unique_id,
+            "file_name": file_name,
+            "mime_type": doc.mime_type,
+            "file_size": doc.file_size,
+            "type": "document",
+        })
+
+        result = await api_client.add_ticket_message(
+            ticket_id=ticket_id,
+            sender_type="adm",
+            sender_name=adm_name,
+            message_text=message_text,
+            message_type="document",
+            voice_file_id=doc.file_id,
+            metadata_json=metadata,
+        )
+
+        if result.get("error"):
+            await update.message.reply_text(
+                f"{E_WARNING} Could not send document. Try again.",
+                parse_mode="HTML",
+            )
+            return CaseStates.REPLY_TO_CASE
+
+        await update.message.reply_text(
+            f"{E_CHECK} <b>Document sent!</b> ({file_name})\n"
+            f"Loading updated case...",
+            parse_mode="HTML",
+        )
+        return await _render_case_detail(update.message, context, ticket_id, is_message=True)
+
+    except Exception as e:
+        logger.error(f"Document reply error: {e}")
+        await update.message.reply_text(
+            f"{E_WARNING} Error sending document. Please type your reply instead.",
+            parse_mode="HTML",
+        )
+        return CaseStates.REPLY_TO_CASE
+
+
 # ---------------------------------------------------------------------------
 # Cancel
 # ---------------------------------------------------------------------------
@@ -597,6 +726,8 @@ def build_cases_handler() -> ConversationHandler:
             CaseStates.REPLY_TO_CASE: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, receive_reply_text),
                 MessageHandler(filters.VOICE, receive_reply_voice),
+                MessageHandler(filters.PHOTO, receive_reply_photo),
+                MessageHandler(filters.Document.ALL, receive_reply_document),
                 *_all_callbacks(),
             ],
         },

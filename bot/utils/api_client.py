@@ -246,14 +246,21 @@ class APIClient:
 
     async def add_ticket_message(self, ticket_id: str, sender_type: str,
                                   sender_name: str, message_text: str,
-                                  message_type: str = "text") -> dict:
+                                  message_type: str = "text",
+                                  voice_file_id: str = None,
+                                  metadata_json: str = None) -> dict:
         """Add a message to a ticket conversation thread."""
-        return await self.post(f"/feedback-tickets/{ticket_id}/messages", data={
+        payload = {
             "sender_type": sender_type,
             "sender_name": sender_name,
             "message_text": message_text,
             "message_type": message_type,
-        })
+        }
+        if voice_file_id:
+            payload["voice_file_id"] = voice_file_id
+        if metadata_json:
+            payload["metadata_json"] = metadata_json
+        return await self.post(f"/feedback-tickets/{ticket_id}/messages", data=payload)
 
     async def get_ticket_by_id(self, ticket_id: str) -> dict:
         """Get a single ticket by ticket_id."""

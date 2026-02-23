@@ -762,6 +762,8 @@ function ConversationThread({ ticketId, ticket, refetch, isAdmin }: { ticketId: 
       case 'clarification_request': return '❓ Clarification Requested';
       case 'escalation': return '🚨 Escalation';
       case 'voice': return '🎤 Voice Note';
+      case 'photo': return '📷 Photo';
+      case 'document': return '📎 Document';
       default: return null;
     }
   };
