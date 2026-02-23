@@ -1136,6 +1136,92 @@ def rate_script(
 
 
 # ---------------------------------------------------------------------------
+# Telegram file proxy — allows frontend to download attachments
+# ---------------------------------------------------------------------------
+
+from fastapi.responses import StreamingResponse
+
+@router.get("/telegram-file/{file_id}")
+async def get_telegram_file(file_id: str):
+    """Proxy a Telegram file download for the web frontend.
+
+    The frontend cannot directly use Telegram file_ids. This endpoint:
+    1. Calls Telegram's getFile API to get the file_path
+    2. Streams the actual file back to the browser
+    """
+    token = settings.TELEGRAM_BOT_TOKEN
+    if not token:
+        raise HTTPException(status_code=503, detail="Telegram integration not configured")
+
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            # Step 1: Get file path from Telegram
+            get_file_url = f"https://api.telegram.org/bot{token}/getFile"
+            resp = await client.get(get_file_url, params={"file_id": file_id})
+
+            if resp.status_code != 200:
+                raise HTTPException(status_code=404, detail="File not found on Telegram")
+
+            data = resp.json()
+            if not data.get("ok"):
+                raise HTTPException(status_code=404, detail="Telegram file lookup failed")
+
+            file_path = data["result"].get("file_path", "")
+            file_size = data["result"].get("file_size", 0)
+
+            if not file_path:
+                raise HTTPException(status_code=404, detail="No file path returned")
+
+            # Step 2: Download the actual file from Telegram
+            download_url = f"https://api.telegram.org/file/bot{token}/{file_path}"
+            file_resp = await client.get(download_url)
+
+            if file_resp.status_code != 200:
+                raise HTTPException(status_code=502, detail="Failed to download file from Telegram")
+
+            # Determine content type from file extension
+            ext = file_path.rsplit(".", 1)[-1].lower() if "." in file_path else ""
+            content_type_map = {
+                "pdf": "application/pdf",
+                "png": "image/png",
+                "jpg": "image/jpeg",
+                "jpeg": "image/jpeg",
+                "gif": "image/gif",
+                "webp": "image/webp",
+                "mp3": "audio/mpeg",
+                "ogg": "audio/ogg",
+                "oga": "audio/ogg",
+                "mp4": "video/mp4",
+                "doc": "application/msword",
+                "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                "xls": "application/vnd.ms-excel",
+                "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                "csv": "text/csv",
+                "txt": "text/plain",
+                "zip": "application/zip",
+            }
+            content_type = content_type_map.get(ext, "application/octet-stream")
+
+            # Extract filename from path
+            filename = file_path.rsplit("/", 1)[-1] if "/" in file_path else file_path
+
+            return StreamingResponse(
+                iter([file_resp.content]),
+                media_type=content_type,
+                headers={
+                    "Content-Disposition": f'inline; filename="{filename}"',
+                    "Content-Length": str(len(file_resp.content)),
+                },
+            )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Telegram file proxy error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve file")
+
+
+# ---------------------------------------------------------------------------
 # Pattern detection (internal helper)
 # ---------------------------------------------------------------------------
 

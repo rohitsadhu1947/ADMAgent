@@ -851,23 +851,53 @@ function ConversationThread({ ticketId, ticket, refetch, isAdmin }: { ticketId: 
                       </audio>
                     </div>
                   )}
-                  {msg.message_type === 'photo' && (
-                    <div className="mt-2 flex items-center gap-2 text-blue-400">
+                  {msg.message_type === 'photo' && msg.voice_file_id && (
+                    <a
+                      href={`${API_BASE}/feedback-tickets/telegram-file/${msg.voice_file_id}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mt-2 flex items-center gap-2 text-blue-400 hover:text-blue-300 transition-colors cursor-pointer"
+                    >
+                      <span className="text-sm">📷</span>
+                      <span className="text-[11px] underline">View Photo</span>
+                    </a>
+                  )}
+                  {msg.message_type === 'photo' && !msg.voice_file_id && (
+                    <div className="mt-2 flex items-center gap-2 text-gray-400">
                       <span className="text-sm">📷</span>
                       <span className="text-[11px]">Photo attached</span>
                     </div>
                   )}
                   {msg.message_type === 'document' && (
-                    <div className="mt-2 flex items-center gap-2 text-blue-400">
-                      <span className="text-sm">📎</span>
-                      <span className="text-[11px]">
-                        {(() => {
-                          try {
-                            const meta = msg.metadata_json ? JSON.parse(msg.metadata_json) : {};
-                            return meta.file_name || 'Document attached';
-                          } catch { return 'Document attached'; }
-                        })()}
-                      </span>
+                    <div className="mt-2">
+                      {(() => {
+                        let fileName = 'Document attached';
+                        try {
+                          const meta = msg.metadata_json ? JSON.parse(msg.metadata_json) : {};
+                          fileName = meta.file_name || 'Document attached';
+                        } catch { /* ignore */ }
+                        const fileId = msg.voice_file_id;
+                        if (fileId) {
+                          return (
+                            <a
+                              href={`${API_BASE}/feedback-tickets/telegram-file/${fileId}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex items-center gap-2 text-blue-400 hover:text-blue-300 transition-colors cursor-pointer"
+                            >
+                              <span className="text-sm">📎</span>
+                              <span className="text-[11px] underline">{fileName}</span>
+                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+                            </a>
+                          );
+                        }
+                        return (
+                          <div className="flex items-center gap-2 text-gray-400">
+                            <span className="text-sm">📎</span>
+                            <span className="text-[11px]">{fileName}</span>
+                          </div>
+                        );
+                      })()}
                     </div>
                   )}
                 </div>
