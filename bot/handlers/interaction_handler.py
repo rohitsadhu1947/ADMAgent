@@ -835,55 +835,77 @@ async def cancel_interaction(update: Update, context: ContextTypes.DEFAULT_TYPE)
 # ---------------------------------------------------------------------------
 
 def build_interaction_handler() -> ConversationHandler:
-    """Build the /log interaction conversation handler with unified feedback + quick log."""
+    """Build the /log interaction conversation handler with unified feedback + quick log.
+
+    The cancel callback is registered in every state (not just fallbacks) so
+    stale inline-keyboard cancel buttons always work regardless of current state.
+    allow_reentry=True lets users restart with /log if the flow gets stuck
+    (e.g., after a bot restart wiping in-memory state).
+    """
+    # Cancel handler must be in every state so stale buttons work
+    _cancel_cb = lambda: CallbackQueryHandler(cancel_interaction, pattern=r"^cancel$")
+
     return ConversationHandler(
         entry_points=[CommandHandler("log", log_command)],
         states={
             InteractionStates.SELECT_AGENT: [
                 CallbackQueryHandler(select_agent, pattern=r"^iagent_"),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, search_agent_text),
+                _cancel_cb(),
             ],
             InteractionStates.SELECT_TYPE: [
                 CallbackQueryHandler(select_type, pattern=r"^itype_"),
+                _cancel_cb(),
             ],
             # --- Quick Log path ---
             InteractionStates.SELECT_TOPIC: [
                 CallbackQueryHandler(select_topic, pattern=r"^topic_"),
+                _cancel_cb(),
             ],
             InteractionStates.SELECT_OUTCOME: [
                 CallbackQueryHandler(select_outcome, pattern=r"^ioutcome_"),
+                _cancel_cb(),
             ],
             InteractionStates.SCHEDULE_FOLLOWUP: [
                 CallbackQueryHandler(schedule_followup, pattern=r"^followup_"),
+                _cancel_cb(),
             ],
             InteractionStates.ADD_NOTES: [
                 CallbackQueryHandler(notes_callback, pattern=r"^notes_"),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, receive_notes_text),
                 MessageHandler(filters.VOICE, receive_notes_voice),
+                _cancel_cb(),
             ],
             InteractionStates.CONFIRM: [
                 CallbackQueryHandler(confirm_interaction, pattern=r"^confirm_"),
+                _cancel_cb(),
             ],
             # --- Feedback sub-flow path ---
             InteractionStates.FB_SELECT_BUCKET: [
                 CallbackQueryHandler(fb_select_bucket, pattern=r"^fbucket_"),
+                _cancel_cb(),
             ],
             InteractionStates.FB_SELECT_REASONS: [
                 CallbackQueryHandler(fb_toggle_reason, pattern=r"^freason_"),
+                _cancel_cb(),
             ],
             InteractionStates.FB_ADD_NOTES: [
                 CallbackQueryHandler(fb_notes_callback, pattern=r"^fnotes_"),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, fb_receive_notes_text),
                 MessageHandler(filters.VOICE, fb_receive_notes_voice),
+                _cancel_cb(),
             ],
             InteractionStates.FB_CONFIRM: [
                 CallbackQueryHandler(fb_confirm, pattern=r"^confirm_"),
+                _cancel_cb(),
             ],
         },
         fallbacks=[
             CommandHandler("cancel", cancel_interaction),
-            CallbackQueryHandler(cancel_interaction, pattern=r"^cancel$"),
+            CommandHandler("log", log_command),  # Allow re-entry
+            _cancel_cb(),
         ],
         name="interaction_log",
         persistent=False,
+        allow_reentry=True,
     )

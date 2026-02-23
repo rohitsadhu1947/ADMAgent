@@ -659,35 +659,50 @@ async def cancel_feedback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 # ---------------------------------------------------------------------------
 
 def build_feedback_handler() -> ConversationHandler:
-    """Build the /feedback conversation handler with new reason taxonomy flow."""
+    """Build the /feedback conversation handler with new reason taxonomy flow.
+
+    allow_reentry=True lets users restart with /feedback if the flow gets stuck
+    (e.g., after a bot restart wiping in-memory state). Cancel callback is
+    registered in every state so stale inline-keyboard buttons always work.
+    """
+    _cancel_cb = lambda: CallbackQueryHandler(cancel_feedback, pattern=r"^cancel$")
+
     return ConversationHandler(
         entry_points=[CommandHandler("feedback", feedback_command)],
         states={
             FeedbackStates.SELECT_AGENT: [
                 CallbackQueryHandler(select_agent, pattern=r"^fbagent_"),
+                _cancel_cb(),
             ],
             FeedbackStates.SEARCH_AGENT: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, search_agent),
+                _cancel_cb(),
             ],
             FeedbackStates.SELECT_CATEGORY: [
                 CallbackQueryHandler(select_bucket, pattern=r"^fbucket_"),
+                _cancel_cb(),
             ],
             FeedbackStates.SELECT_SUBCATEGORY: [
                 CallbackQueryHandler(toggle_reason, pattern=r"^freason_"),
+                _cancel_cb(),
             ],
             FeedbackStates.ADD_NOTES: [
                 CallbackQueryHandler(notes_callback, pattern=r"^fnotes_"),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, receive_notes_text),
                 MessageHandler(filters.VOICE, receive_notes_voice),
+                _cancel_cb(),
             ],
             FeedbackStates.CONFIRM: [
                 CallbackQueryHandler(confirm_feedback, pattern=r"^confirm_"),
+                _cancel_cb(),
             ],
         },
         fallbacks=[
             CommandHandler("cancel", cancel_feedback),
-            CallbackQueryHandler(cancel_feedback, pattern=r"^cancel$"),
+            CommandHandler("feedback", feedback_command),  # Allow re-entry
+            _cancel_cb(),
         ],
         name="feedback",
         persistent=False,
+        allow_reentry=True,
     )
