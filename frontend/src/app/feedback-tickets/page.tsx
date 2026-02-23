@@ -839,7 +839,7 @@ function ConversationThread({ ticketId, ticket, refetch, isAdmin }: { ticketId: 
                   ) : (
                     <p className={`text-sm ${style.text}`}>{msg.message_text}</p>
                   )}
-                  {msg.voice_file_id && (
+                  {msg.voice_file_id && msg.message_type === 'voice' && (
                     <div className="mt-2 flex items-center gap-2">
                       <Mic className="w-4 h-4 text-purple-400" />
                       <audio
@@ -849,6 +849,25 @@ function ConversationThread({ ticketId, ticket, refetch, isAdmin }: { ticketId: 
                       >
                         Audio not supported.
                       </audio>
+                    </div>
+                  )}
+                  {msg.message_type === 'photo' && (
+                    <div className="mt-2 flex items-center gap-2 text-blue-400">
+                      <span className="text-sm">📷</span>
+                      <span className="text-[11px]">Photo attached</span>
+                    </div>
+                  )}
+                  {msg.message_type === 'document' && (
+                    <div className="mt-2 flex items-center gap-2 text-blue-400">
+                      <span className="text-sm">📎</span>
+                      <span className="text-[11px]">
+                        {(() => {
+                          try {
+                            const meta = msg.metadata_json ? JSON.parse(msg.metadata_json) : {};
+                            return meta.file_name || 'Document attached';
+                          } catch { return 'Document attached'; }
+                        })()}
+                      </span>
                     </div>
                   )}
                 </div>
