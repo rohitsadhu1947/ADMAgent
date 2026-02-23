@@ -1,6 +1,10 @@
 """
 Configuration settings for the ADM Platform backend.
 Uses pydantic-settings for environment variable management.
+
+DATABASE_URL priority:
+  1. DATABASE_URL env var (set in Railway → points to Neon PostgreSQL)
+  2. Fallback: SQLite for local development
 """
 
 from pydantic_settings import BaseSettings
@@ -10,11 +14,16 @@ from typing import Optional
 class Settings(BaseSettings):
     # Application
     APP_NAME: str = "ADM Platform - Axis Max Life Insurance"
-    APP_VERSION: str = "1.0.0"
+    APP_VERSION: str = "2.7.0"
     DEBUG: bool = True
 
-    # Database
+    # Database — default is SQLite for local dev; Railway overrides via env var
     DATABASE_URL: str = "sqlite:///./adm_platform.db"
+
+    @property
+    def is_postgres(self) -> bool:
+        """True when using PostgreSQL (Neon DB in production)."""
+        return self.DATABASE_URL.startswith("postgresql")
 
     # Anthropic Claude API
     ANTHROPIC_API_KEY: str = ""

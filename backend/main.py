@@ -30,34 +30,34 @@ _db_ready = threading.Event()
 
 
 def _needs_db_reset(db) -> bool:
-    """Check if the database contains stale demo data that needs to be wiped.
+    """Check if the database needs a full reset.
 
-    Detects old demo ADMs (Suresh, Amitava, Rajiv, Priyanka, Meenakshi) that
-    were part of the initial prototype. If any exist, the DB should be reset.
-    Also resets if RESET_DB env var is set.
+    With Neon PostgreSQL (persistent), this only triggers on explicit RESET_DB=true.
+    With SQLite (local dev / old Railway), it also detects stale demo data.
     """
     import os
     from models import ADM
 
-    # Explicit reset via env var
+    # Explicit reset via env var (works for both backends)
     if os.environ.get("RESET_DB", "").lower() in ("true", "1", "yes"):
         logger.warning("RESET_DB=true env var detected.")
         return True
 
-    # Detect stale demo ADMs by name fragments
-    # Set 1: Original prototype ADMs (Feb 17 initial build)
-    # Set 2: Demo agents from hardcoded agent list (AGT001-AGT008)
+    # On PostgreSQL (Neon), NEVER auto-reset — data is persistent and real
+    if settings.is_postgres:
+        return False
+
+    # SQLite only: detect stale demo data from old prototype
     stale_names = [
-        "Suresh", "Amitava", "Rajiv", "Priyanka", "Meenakshi",  # Old demo ADMs
-        "Priya Sharma", "Kavita Singh", "Deepak Gupta", "Anjali Reddy",  # Demo agents
-        "Neeta Desai", "Rajesh Verma",  # More demo agents
+        "Suresh", "Amitava", "Rajiv", "Priyanka", "Meenakshi",
+        "Priya Sharma", "Kavita Singh", "Deepak Gupta", "Anjali Reddy",
+        "Neeta Desai", "Rajesh Verma",
     ]
     try:
         for name_frag in stale_names:
             if db.query(ADM).filter(ADM.name.contains(name_frag)).first():
                 logger.warning(f"Stale demo data detected: '{name_frag}*'. DB needs reset.")
                 return True
-        # Also check Agent table for demo agents by name
         from models import Agent
         demo_agent_names = ["Suresh Patel", "Priya Sharma", "Amit Kumar", "Neeta Desai",
                            "Rajesh Verma", "Kavita Singh", "Deepak Gupta", "Anjali Reddy"]
@@ -66,7 +66,7 @@ def _needs_db_reset(db) -> bool:
                 logger.warning(f"Stale demo agent detected: '{name}'. DB needs reset.")
                 return True
     except Exception:
-        pass  # Table might not exist yet — that's fine
+        pass  # Table might not exist yet
 
     return False
 
@@ -174,6 +174,8 @@ async def lifespan(app: FastAPI):
     # --- Startup ---
     logger.info("=" * 60)
     logger.info(f"  {settings.APP_NAME} v{settings.APP_VERSION}")
+    db_type = "PostgreSQL (Neon)" if settings.is_postgres else "SQLite (local)"
+    logger.info(f"  Database: {db_type}")
     logger.info("=" * 60)
 
     # Run DB init in background so healthcheck responds immediately
@@ -293,9 +295,11 @@ def health_check():
     """
     db_initialized = _db_ready.is_set()
 
+    db_backend = "postgresql" if settings.is_postgres else "sqlite"
     result = {
         "status": "healthy",
         "database": "ready" if db_initialized else "initializing",
+        "database_backend": db_backend,
         "ai_enabled": settings.ENABLE_AI_FEATURES and bool(settings.ANTHROPIC_API_KEY),
         "telegram_enabled": settings.ENABLE_TELEGRAM_BOT and bool(settings.TELEGRAM_BOT_TOKEN),
     }

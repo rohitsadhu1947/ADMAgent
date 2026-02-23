@@ -368,7 +368,7 @@ def main() -> None:
         )
         sys.exit(1)
 
-    BOT_VERSION = "2.6.0-2026-02-23"
+    BOT_VERSION = "2.7.0-neon-2026-02-23"
     logger.info("Starting ADM Platform Telegram Bot v%s", BOT_VERSION)
     logger.info("API Base URL: %s", config.API_BASE_URL)
 

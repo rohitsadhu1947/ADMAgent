@@ -2,10 +2,11 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install system deps
+# Install system deps (gcc/libffi for cryptography, libpq-dev for psycopg2)
 RUN apt-get update && apt-get install -y \
     gcc \
     libffi-dev \
+    libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy and install Python dependencies
@@ -20,10 +21,10 @@ COPY bot/ ./bot/
 COPY start.py .
 
 # Force Railway to never use stale image — version tag changes on every meaningful deploy
-LABEL app.version="2.6.0-2026-02-23" \
-      app.description="ADM Platform - no demo data"
+LABEL app.version="2.7.0-neon-2026-02-23" \
+      app.description="ADM Platform - Neon PostgreSQL"
 
-# Delete any stale .db files that might have leaked into the image
+# Delete any stale .db / __pycache__ that might have leaked into the image
 RUN find /app -name "*.db" -delete 2>/dev/null; \
     find /app -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null; \
     echo "Clean build verified at $(date -u)"
