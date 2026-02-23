@@ -485,7 +485,8 @@ async def receive_reply_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
         parse_mode="HTML",
     )
 
-    # Show updated case detail
+    # Show updated case detail as a NEW message (since we can't edit the reply)
+    # We must render it so the user can continue interacting
     return await _render_case_detail(update.message, context, ticket_id, is_message=True)
 
 
@@ -562,29 +563,49 @@ async def cancel_cases(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
 # ---------------------------------------------------------------------------
 
 def build_cases_handler() -> ConversationHandler:
-    """Build the /cases conversation handler."""
+    """Build the /cases conversation handler.
+
+    IMPORTANT: Every state must handle ALL callback patterns that can appear
+    from any active inline keyboard in the chat.  After a user replies via
+    text, _render_case_detail sends a NEW message (can't edit the user's
+    message), so the old message's buttons remain active.  If the user taps
+    an old button whose pattern isn't registered in the current state, the
+    ConversationHandler silently drops it → the flow appears stuck.
+
+    Fix: register every callback pattern in every state so the handler can
+    route the user to the correct step regardless of which button they tap.
+    """
+
+    def _all_callbacks():
+        """Create fresh handler instances for all callback patterns."""
+        return [
+            CallbackQueryHandler(select_agent_for_cases, pattern=r"^caseagent_"),
+            CallbackQueryHandler(view_case_detail, pattern=r"^viewcase_"),
+            CallbackQueryHandler(case_detail_action, pattern=r"^case(reply|close|refresh|back)"),
+            CallbackQueryHandler(cancel_cases, pattern=r"^cancel$"),
+        ]
+
     return ConversationHandler(
         entry_points=[CommandHandler("cases", cases_command)],
         states={
             CaseStates.SELECT_AGENT: [
-                CallbackQueryHandler(select_agent_for_cases, pattern=r"^caseagent_"),
+                *_all_callbacks(),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, search_agent_for_cases),
             ],
-            CaseStates.VIEW_CASES: [
-                CallbackQueryHandler(view_case_detail, pattern=r"^viewcase_"),
-            ],
-            CaseStates.VIEW_CASE_DETAIL: [
-                CallbackQueryHandler(case_detail_action, pattern=r"^case(reply|close|refresh|back)"),
-            ],
+            CaseStates.VIEW_CASES: _all_callbacks(),
+            CaseStates.VIEW_CASE_DETAIL: _all_callbacks(),
             CaseStates.REPLY_TO_CASE: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, receive_reply_text),
                 MessageHandler(filters.VOICE, receive_reply_voice),
+                *_all_callbacks(),
             ],
         },
         fallbacks=[
             CommandHandler("cancel", cancel_cases),
+            CommandHandler("cases", cases_command),  # Allow re-entry
             CallbackQueryHandler(cancel_cases, pattern=r"^cancel$"),
         ],
         name="case_history",
         persistent=False,
+        allow_reentry=True,
     )
