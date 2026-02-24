@@ -4,6 +4,9 @@ Railway startup script — single-process launcher for backend + Telegram bot.
 Replaces railway_start.sh to avoid bash/subprocess issues on Railway.
 Runs uvicorn in the main thread and the Telegram bot in a monitored
 background subprocess with auto-restart on crash.
+
+IMPORTANT: Handles SIGTERM gracefully so Railway deploys don't leave
+ghost bot processes polling Telegram (which causes duplicate responses).
 """
 
 import os
@@ -11,6 +14,7 @@ import sys
 import logging
 import threading
 import time
+import signal
 import subprocess
 
 logging.basicConfig(
@@ -20,11 +24,47 @@ logging.basicConfig(
 )
 logger = logging.getLogger("launcher")
 
+# Global reference to bot subprocess so signal handler can kill it
+_bot_process = None
+_shutting_down = False
+
+
+def _signal_handler(signum, frame):
+    """Handle SIGTERM/SIGINT from Railway during redeploys.
+
+    Immediately kills the bot subprocess so it stops polling Telegram.
+    This prevents the old instance from competing with the new instance.
+    """
+    global _shutting_down
+    _shutting_down = True
+    sig_name = signal.Signals(signum).name
+    logger.info("Received %s — shutting down bot subprocess...", sig_name)
+
+    if _bot_process and _bot_process.poll() is None:
+        logger.info("Killing bot subprocess (PID %d)...", _bot_process.pid)
+        _bot_process.terminate()
+        try:
+            _bot_process.wait(timeout=5)
+            logger.info("Bot subprocess terminated cleanly.")
+        except subprocess.TimeoutExpired:
+            logger.warning("Bot subprocess didn't terminate in 5s, force killing...")
+            _bot_process.kill()
+
+    logger.info("Exiting launcher.")
+    sys.exit(0)
+
+
+# Register signal handlers for graceful shutdown
+signal.signal(signal.SIGTERM, _signal_handler)
+signal.signal(signal.SIGINT, _signal_handler)
+
 
 def _wait_for_backend(port: int, timeout: int = 90) -> bool:
     """Wait for backend health endpoint to respond."""
     import urllib.request
     for i in range(timeout):
+        if _shutting_down:
+            return False
         try:
             resp = urllib.request.urlopen(
                 f"http://localhost:{port}/health", timeout=3
@@ -40,6 +80,8 @@ def _wait_for_backend(port: int, timeout: int = 90) -> bool:
 
 def start_telegram_bot(port: int):
     """Start and monitor the Telegram bot subprocess with auto-restart."""
+    global _bot_process
+
     token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
     if not token:
         logger.info("TELEGRAM_BOT_TOKEN not set, skipping bot.")
@@ -54,8 +96,12 @@ def start_telegram_bot(port: int):
 
     def _monitor_bot():
         """Monitor the bot subprocess and auto-restart on crash."""
+        global _bot_process
+
         # Wait for backend to be ready before first launch
         if not _wait_for_backend(port):
+            if _shutting_down:
+                return
             logger.error(
                 "Backend never became ready after 90s. Starting bot anyway."
             )
@@ -65,7 +111,7 @@ def start_telegram_bot(port: int):
         min_uptime_for_reset = 300  # 5 minutes of stable uptime resets counter
         backoff_base = 5
 
-        while restart_count < max_restarts:
+        while restart_count < max_restarts and not _shutting_down:
             logger.info(
                 "Launching Telegram bot subprocess (attempt %d/%d)...",
                 restart_count + 1, max_restarts,
@@ -73,19 +119,23 @@ def start_telegram_bot(port: int):
             start_time = time.time()
 
             try:
-                proc = subprocess.Popen(
+                _bot_process = subprocess.Popen(
                     [sys.executable, os.path.join(bot_dir, "telegram_bot.py")],
                     env=bot_env,
                     stdout=sys.stdout,
                     stderr=sys.stderr,
                 )
                 logger.info(
-                    "Telegram bot subprocess launched (PID %d).", proc.pid
+                    "Telegram bot subprocess launched (PID %d).", _bot_process.pid
                 )
 
                 # Wait for process to complete (blocks until crash or exit)
-                exit_code = proc.wait()
+                exit_code = _bot_process.wait()
                 uptime = time.time() - start_time
+
+                if _shutting_down:
+                    logger.info("Bot exited during shutdown (expected).")
+                    return
 
                 logger.warning(
                     "Telegram bot exited with code %d after %.0fs.",
@@ -108,25 +158,38 @@ def start_telegram_bot(port: int):
                     "Restarting bot in %ds (restart %d/%d)...",
                     backoff, restart_count, max_restarts,
                 )
-                time.sleep(backoff)
+
+                # Sleep with shutdown check
+                for _ in range(backoff):
+                    if _shutting_down:
+                        return
+                    time.sleep(1)
 
                 # Re-check backend health before restarting
                 if not _wait_for_backend(port, timeout=30):
+                    if _shutting_down:
+                        return
                     logger.warning(
                         "Backend not healthy before bot restart. "
                         "Waiting additional 30s..."
                     )
-                    time.sleep(30)
+                    for _ in range(30):
+                        if _shutting_down:
+                            return
+                        time.sleep(1)
 
             except Exception as e:
+                if _shutting_down:
+                    return
                 logger.error("Error managing bot subprocess: %s", e)
                 restart_count += 1
                 time.sleep(10)
 
-        logger.error(
-            "Telegram bot exceeded max restarts (%d). Giving up.",
-            max_restarts,
-        )
+        if not _shutting_down:
+            logger.error(
+                "Telegram bot exceeded max restarts (%d). Giving up.",
+                max_restarts,
+            )
 
     thread = threading.Thread(target=_monitor_bot, daemon=True, name="bot-monitor")
     thread.start()
@@ -136,7 +199,7 @@ def main():
     port = int(os.environ.get("PORT", 8000))
 
     logger.info("=" * 60)
-    logger.info("  ADM Platform Launcher")
+    logger.info("  ADM Platform Launcher v2.7.1")
     logger.info("  Port: %d", port)
     logger.info("=" * 60)
 

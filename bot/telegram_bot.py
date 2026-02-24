@@ -320,7 +320,20 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
 # ---------------------------------------------------------------------------
 
 async def post_init(application: Application) -> None:
-    """Set bot commands for the Telegram menu after initialization."""
+    """Post-initialization: claim exclusive update access and set bot commands.
+
+    CRITICAL for Railway: During deploys, the old and new containers overlap.
+    Both run polling simultaneously, causing duplicate/mixed responses.
+    deleteWebhook(drop_pending_updates=True) forces Telegram to invalidate
+    the old polling session, so only THIS instance receives updates.
+    """
+    # Force-claim exclusive update access — kills any other polling session
+    try:
+        await application.bot.delete_webhook(drop_pending_updates=True)
+        logger.info("Webhook deleted + pending updates dropped (claimed exclusive access).")
+    except Exception as exc:
+        logger.warning("Could not delete webhook: %s", exc)
+
     commands = [
         BotCommand("start", "Register / Restart"),
         BotCommand("briefing", "Morning briefing / Subah ki report"),
@@ -368,7 +381,7 @@ def main() -> None:
         )
         sys.exit(1)
 
-    BOT_VERSION = "2.7.0-neon-2026-02-23"
+    BOT_VERSION = "2.7.1-stable-2026-02-24"
     logger.info("Starting ADM Platform Telegram Bot v%s", BOT_VERSION)
     logger.info("API Base URL: %s", config.API_BASE_URL)
 
@@ -505,6 +518,11 @@ def main() -> None:
     application.run_polling(
         allowed_updates=Update.ALL_TYPES,
         drop_pending_updates=True,
+        # Slightly longer poll interval to reduce CPU usage on Railway
+        # and avoid Telegram rate limits during restart storms
+        poll_interval=1.0,
+        # Close the polling connection cleanly on shutdown signal
+        close_loop=False,
     )
 
 
