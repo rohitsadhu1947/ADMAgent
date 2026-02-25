@@ -210,8 +210,14 @@ def main():
     os.chdir(backend_dir)
     sys.path.insert(0, backend_dir)
 
-    # Start Telegram bot monitor in background (will wait for backend)
-    start_telegram_bot(port)
+    # Telegram bot is now running on Vercel (webhook mode).
+    # Do NOT start the polling bot here — it would delete the webhook
+    # and interfere with the Vercel deployment.
+    if os.environ.get("ENABLE_POLLING_BOT", "").lower() in ("true", "1", "yes"):
+        logger.info("ENABLE_POLLING_BOT=true — starting polling bot (legacy mode)")
+        start_telegram_bot(port)
+    else:
+        logger.info("Telegram bot disabled on Railway (running on Vercel via webhook)")
 
     # Start uvicorn in the main thread (this blocks and serves requests)
     import uvicorn
